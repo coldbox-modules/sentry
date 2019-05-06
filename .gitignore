@@ -1,0 +1,18 @@
+.vscode
+
+.artifacts/**
+.tmp/**
+
+test-harness/.engine/**
+test-harness/coldbox/**
+test-harness/docbox/**
+test-harness/testbox/**
+test-harness/logs/**
+test-harness/modules/**
+
+# log files
+logs/**
+
+# don't put token
+test-harness/config/token.cfm
+test-harness/.env
