@@ -34,18 +34,28 @@ Create the `sentry` structure inside the `moduleSettings` struct in your `config
 
 ```js
 moduleSettings = {
-    sentry = {
-        // Sentry token
-        "ServerSideToken" = "",
-        // Enable the Sentry LogBox Appender Bridge
-        "enableLogBoxAppender" : true,
-        // Min/Max levels for appender
-        "levelMin" = "FATAL",
-        "levelMax" = "INFO",
-        // Enable/disable error logging
-        "enableExceptionLogging" = true
-    }
-};
+     sentry = {
+         // Enable the Sentry LogBox Appender Bridge
+         "enableLogBoxAppender" : true,
+         // Enable/disable error logging
+         "enableExceptionLogging" = true,
+         "publicKey" : getSystemSetting( "SENTRY_PUBLICKEY", "" ),
+         "privateKey" : getSystemSetting( "SENTRY_PRIVATEKEY", "" ),
+         "projectID" : 1,
+         async : true,
+         // Closure to return dynamic info of logged in user
+         userInfoUDF = function(){
+             return {
+             	 // Standard user data Sentry looks for
+             	 id : 123
+                 username : 'woodsb',
+                 email : 'brad@bradwood.com',
+                 // Anything else you want
+                 cool : true
+             };
+         }
+     }
+}
 ```
 
 ## Usage
@@ -59,6 +69,13 @@ The module will automatically listen for exceptions in any part of your applicat
 ### Logging
 
 You can use LogBox and any of its logging methods to send data to Sentry automatically using the required logging levels for the appender in the configuration.
+
+### Credit
+
+This project is based on the fine open source work of others.  
+
+* https://github.com/GiancarloGomez/sentry-cfml
+* https://github.com/jmacul2/raven-cfml
 
 ********************************************************************************
 Copyright Since 2005 ColdBox Framework by Luis Majano and Ortus Solutions, Corp

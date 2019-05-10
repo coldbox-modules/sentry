@@ -401,11 +401,11 @@ component accessors=true singleton {
 			"sessions" 		: session,
 			"url" 			: arguments.path,
 			"method" 		: arguments.cgiVars.request_method,
-			"data" 			: form,
-			"query_string" 	: arguments.cgiVars.query_string,
+			"data" 			: sanitizeFields( form ),
+			"query_string" 	: sanitizeQueryString( arguments.cgiVars.query_string ),
 			"cookies" 		: cookie,
 			"env" 			: arguments.cgiVars,
-			"headers" 		: httpRequestData.headers
+			"headers" 		: sanitizeHeaders( httpRequestData.headers )
 		};
 		
 		// encode data
@@ -670,15 +670,16 @@ component accessors=true singleton {
 	 * Sanitize the incoming http headers in the request data struct
 	 * @data The HTTP data struct, passed by reference
 	 */
-	private function sanitizeHeaders( required struct data ){
-		if( structCount( arguments.data.headers ) ){
+	private function sanitizeHeaders( required struct headers ){
+		if( structCount( arguments.headers ) ){
 			for( var thisHeader in variables.settings.scrubHeaders ){
 				// If header found, then sanitize it.
-				if( structKeyExists( arguments.data.headers, thisHeader ) ){
-					arguments.data.headers[ thisHeader ] = "*";
+				if( structKeyExists( arguments.headers, thisHeader ) ){
+					arguments.headers[ thisHeader ] = "[Filtered]";
 				}
 			}
 		}
+		return arguments.headers;
 	}
 
 	/**
@@ -690,7 +691,7 @@ component accessors=true singleton {
 			for( var thisField in variables.settings.scrubFields ){
 				// If header found, then sanitize it.
 				if( structKeyExists( arguments.data, thisField ) ){
-					arguments.data[ thisField ] = "*";
+					arguments.data[ thisField ] = "[Filtered]";
 				}
 			}
 		}
@@ -702,14 +703,14 @@ component accessors=true singleton {
 	 * @target The target string to sanitize
 	 */
 	private function sanitizeQueryString( required string target ){
-		var aTarget = listToArray( cgi.query_string, "&" )
+		var aTarget = listToArray( target, "&" )
 			.map( function( item, index, array ){
 				var key 	= listFirst( arguments.item, "=" );
 				var value 	= listLast( arguments.item, "=" );
 
 				// Sanitize?
 				if( arrayContainsNoCase( variables.settings.scrubFields, key ) ){
-					value = "*";
+					value = "[Filtered]";
 				}
 
 				return "#key#=#value#";

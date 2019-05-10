@@ -19,7 +19,7 @@ component {
 	this.layoutParentLookup = true;
 
 	// STATIC SCRUB FIELDS
-	variables.SCRUB_FIELDS 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token' ];
+	variables.SCRUB_FIELDS 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ];
 	variables.SCRUB_HEADERS 	= [ 'x-api-token', 'Authorization' ];
 
 	/**
@@ -37,7 +37,7 @@ component {
 		    'levelMax' = 'ERROR',
 		    // Enable/disable error logging
 		    'enableExceptionLogging' = true,
-		    // Data sanitization, scrub fields and headers, replaced with * at runtime
+		    // Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
 		    'scrubFields' 	= [],
 		    'scrubHeaders' 	= [],
 		    'release' = '',
