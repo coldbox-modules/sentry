@@ -43,6 +43,8 @@ component accessors=true singleton {
 	/** A UDF that generates user information for logged messages. Returns a struct containing keys "id", "email", "username", and anything else. */
 	property name="userInfoUDF";
 	
+	property name="enabled";
+	
 	
 
 	/**
@@ -57,6 +59,8 @@ component accessors=true singleton {
 	 */	
 	function onDIComplete() {
 		
+		setEnabled( true );
+		
 		if( len( settings.DSN ) ) {
 			setDSN( settings.DSN );
 			parseDSN(arguments.DSN);
@@ -65,6 +69,10 @@ component accessors=true singleton {
 			setPrivateKey( settings.privateKey );
 			setProjectID( settings.projectID );
 		} else {
+			setPublicKey( '' );
+			setPrivateKey( '' );
+			setProjectID( 0 );
+			setEnabled( false );
 			writeDump( var="You must configure in a valid DSN or Project Keys and ID to instantiate the Sentry CFML Client.", output='console' );
 		}
 		
@@ -147,6 +155,9 @@ component accessors=true singleton {
 		struct userInfo = {},
 		string logger=getLogger()
 	) {
+		if( !getEnabled() ) {
+			return;
+		}
 		var sentryMessage = {};
 
 		arguments.level = validateLevel(arguments.level);
@@ -203,6 +214,9 @@ component accessors=true singleton {
 		string message = '',
 		string logger=getLogger()
 	) {
+		if( !getEnabled() ) {
+			return;
+		}
 		var sentryException 		= {
 			"logger" = arguments.logger
 		};
