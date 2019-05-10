@@ -5,7 +5,7 @@
 # Merge development into it
 !git merge --no-ff development
 # Tag the master repo with the version in box.json
-!git tag v`box package show version`
+echo "git tag v`package show version`" | run
 # Push all branches
 !git push origin --all
 # Push all tags

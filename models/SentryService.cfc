@@ -65,7 +65,7 @@ component accessors=true singleton {
 			setPrivateKey( settings.privateKey );
 			setProjectID( settings.projectID );
 		} else {
-			throw(message = "You must configure in a valid DSN or Project Keys and ID to instantiate the Sentry CFML Client.");
+			writeDump( var="You must configure in a valid DSN or Project Keys and ID to instantiate the Sentry CFML Client.", output='console' );
 		}
 		
 		if ( len( settings.sentryUrl ) ) {
