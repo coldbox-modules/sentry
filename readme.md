@@ -86,7 +86,7 @@ www.ortussolutions.com
 
 Because of His grace, this project exists. If you don't like this, then don't read it, its not for you.
 
->"Therefore being justified by faith, we have peace with God through our Lord Jesus Christ:
+> "Therefore being justified by faith, we have peace with God through our Lord Jesus Christ:
 By whom also we have access by faith into this grace wherein we stand, and rejoice in hope of the glory of God.
 And not only so, but we glory in tribulations also: knowing that tribulation worketh patience;
 And patience, experience; and experience, hope:
