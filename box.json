@@ -1,18 +1,18 @@
 {
-    "name":"RollBar",
+    "name":"Sentry",
     "author":"Ortus Solutions <info@ortussolutions.com>",
-    "version":"2.0.0",
-    "location"  : "https://downloads.ortussolutions.com/ortussolutions/coldbox-modules/rollbar/@build.version@/rollbar-@build.version@.zip",
-    "slug":"rollbar",
+    "version":"1.0.0",
+    "location"  : "https://downloads.ortussolutions.com/ortussolutions/coldbox-modules/sentry/@build.version@/sentry-@build.version@.zip",
+    "slug":"sentry",
     "type":"modules",
-    "homepage":"https://github.com/coldbox-modules/rollbar",
-    "documentation":"https://github.com/coldbox-modules/rollbar",
+    "homepage":"https://github.com/coldbox-modules/sentry",
+    "documentation":"https://github.com/coldbox-modules/sentry",
     "repository":{
         "type":"git",
-        "url":"https://github.com/coldbox-modules/rollbar"
+        "url":"https://github.com/coldbox-modules/sentry"
     },
-    "bugs":"https://github.com/coldbox-modules/rollbar/issues",
-    "shortDescription":"A module to log messages and send bug reports to Rollbar",
+    "bugs":"https://github.com/coldbox-modules/sentry/issues",
+    "shortDescription":"A module to log messages and send bug reports to Sentry",
     "license":[
         {
             "type":"Apache2",

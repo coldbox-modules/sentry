@@ -60,7 +60,8 @@
 			appenders = {
 				files={class="coldbox.system.logging.appenders.RollingFileAppender",
 					properties = {
-						filename = "tester", filePath="/#appMapping#/logs"
+						filename = "tester", filePath="/#appMapping#/logs",
+						async = true
 					}
 				}
 			},
@@ -72,15 +73,25 @@
 
 		moduleSettings = {
 			sentry = {
-				// Sentry token
-				"ServerSideToken" : getSystemSetting( "SENTRY_TOKEN", "" ),
 				// Enable the Sentry LogBox Appender Bridge
 				"enableLogBoxAppender" : true,
 				// Min/Max levels for appender
 				"levelMin" : "FATAL",
 				"levelMax" : "ERROR",
 				// Enable/disable error logging
-				"enableExceptionLogging" = true
+				"enableExceptionLogging" = true,
+				"publicKey" : getSystemSetting( "SENTRY_PUBLICKEY", "" ),
+				"privateKey" : getSystemSetting( "SENTRY_PRIVATEKEY", "" ),
+				"projectID" : getSystemSetting( "SENTRY_PROJECTID", "" ),
+				"sentryUrl" : getSystemSetting( "SENTRY_URL", "" ),
+				async : false,
+				userInfoUDF = function(){
+					return {
+						username : 'woodsb',
+						email : 'brad@bradwood.com',
+						cool : true
+					};
+				}
 			}
 		};
 

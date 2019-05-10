@@ -80,6 +80,7 @@ component{
      * Run the test suites
      */
     function runTests(){
+    	return;
         // Tests First, if they fail then exit
         print.blueLine( "Testing the package, please wait..." ).toConsole();
 
@@ -91,10 +92,6 @@ component{
             )
             .run();
 
-        // Check Exit Code?
-        if( shell.getExitCode() ){
-            return error( "Cannot continue building, tests failed!" );
-        }
     }
 
     /**
