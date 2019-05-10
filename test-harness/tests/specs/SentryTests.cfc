@@ -1,7 +1,7 @@
 ﻿/**
 * My BDD Test
 */
-component extends="coldbox.system.testing.BaseTestCase" appMapping="/root"{
+component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 
 /*********************************** LIFE CYCLE Methods ***********************************/
 
@@ -19,28 +19,33 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root"{
 
 	function run(){
 		// all your suites go here.
-		describe( "Sentry Module", function(){
+		describe( 'Sentry Module', function(){
 
 			beforeEach(function( currentSpec ){
 				setup();
 			});
 
-			it( "should register library", function(){
+			it( 'should register library', function(){
 				var service = getSentry();
 				expect(	service ).toBeComponent();
 			});
 
-			it( "should trap exceptions and do logging", function(){
+			it( 'can log message', function(){
+				var service = getSentry();
+				service.captureMessage( 'This is a test message' );
+			});
+
+			it( 'should trap exceptions and do logging', function(){
 				expect(	function(){
-					execute( "main.index" );
-				}).toThrow();
+					execute( 'main.index' );
+				}).toThrow( 'ThrownFromMain' );
 			});
 
 		});
 	}
 
 	private function getSentry(){
-		return getWireBox().getInstance( "SentryService@sentry" );
+		return getWireBox().getInstance( 'SentryService@sentry' );
 	}
 
 }
