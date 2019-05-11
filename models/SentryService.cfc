@@ -668,15 +668,16 @@ component accessors=true singleton {
 	private function getRealIP(){
 		var headers = GetHttpRequestData().headers;
 
-		// Very balanced headers
+		// When going through a proxy, the IP can be a delimtied list, thus we take the last one in the list
+		
 		if( structKeyExists( headers, 'x-cluster-client-ip' ) ){
-			return headers[ 'x-cluster-client-ip' ];
+			return trim( listLast( headers[ 'x-cluster-client-ip' ] ) );
 		}
 		if( structKeyExists( headers, 'X-Forwarded-For' ) ){
-			return headers[ 'X-Forwarded-For' ];
+			return trim( listLast( headers[ 'X-Forwarded-For' ] ) );
 		}
 
-		return len( cgi.remote_addr ) ? cgi.remote_addr : '127.0.0.1';
+		return len( cgi.remote_addr ) ? trim( listLast( cgi.remote_addr ) ) : '127.0.0.1';
 	}
 	
 
