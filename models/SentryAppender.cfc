@@ -34,19 +34,19 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 		// Is this an exception or not?
 		if( isStruct( extraInfo ) && structKeyExists( extraInfo, "StackTrace" ) ){
 			
-			variables.sentryService.captureMessage(
-				message	= arguments.logEvent.getMessage(),
-				level 	= this.logLevels.lookup( arguments.logEvent.getSeverity() ),
-				logger = arguments.logEvent.getcategory() 
-			);
-				
-		} else {
-			
 			variables.sentryService.captureException(
 				exception = extraInfo,
 				level 	= this.logLevels.lookup( arguments.logEvent.getSeverity() ),
 				message = arguments.logEvent.getMessage(),
 				logger = arguments.logEvent.getcategory()
+			);
+				
+		} else {
+			
+			variables.sentryService.captureMessage(
+				message	= arguments.logEvent.getMessage(),
+				level 	= this.logLevels.lookup( arguments.logEvent.getSeverity() ),
+				logger = arguments.logEvent.getcategory() 
 			);
 				
 		}
