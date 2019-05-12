@@ -12,8 +12,8 @@ echo "git tag v`package show version`" | run
 !git push origin --tags
 # Check development again
 !git checkout -f development
-# Bump to prepare for a new release, do minor, change if needed and don't tag
-bump --minor --!tagVersion
+# Bump to prepare for a new release, do patch, change if needed and don't tag
+bump --patch --!tagVersion
 # Send it out
 !git commit -a -m "version bump"
 !git push origin development
