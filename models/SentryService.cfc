@@ -459,13 +459,12 @@ component accessors=true singleton {
 			cfhttpparam(type="header",name="X-Sentry-Auth",value=arguments.header);
 			cfhttpparam(type="body",value=arguments.json);
 		}
-				
+						
 		if( find( "400", http.statuscode ) || find( "500", http.statuscode ) ){
-			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
-		}
-		
+			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );	 
 		// TODO : Honor Sentry’s HTTP 429 Retry-After header any other errors
-		if (!find("200",http.statuscode)){
+		} else if (!find("200",http.statuscode)){
+			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
 		}
 	}
 
