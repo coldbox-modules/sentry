@@ -128,7 +128,7 @@ component accessors=true singleton {
 	*/
 	private string function validateLevel(required string level) {
 		if(!getLevels().findNoCase(arguments.level)) {
-			throw(message="Error Type must be one of the following : " & getLevels().toString());
+			throw( message="Error Type [#arguments.level#] is invalid. Must be one of the following : " & getLevels().toString() );
 		}
 		return lcase( arguments.level );
 	}
