@@ -30,23 +30,30 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 	 */
 	public void function logMessage( required coldbox.system.logging.LogEvent logEvent ){
 		var extraInfo = arguments.logEvent.getExtraInfo();
-
+		var level = this.logLevels.lookup( arguments.logEvent.getSeverity() );
+		var message = arguments.logEvent.getMessage();
+		var loggerCat = arguments.logEvent.getcategory();
+	
+		if( level == 'warn' ) {
+			level = 'warning';
+		}
+	
 		// Is this an exception or not?
 		if( isStruct( extraInfo ) && structKeyExists( extraInfo, "StackTrace" ) ){
 			
 			variables.sentryService.captureException(
 				exception = extraInfo,
-				level 	= this.logLevels.lookup( arguments.logEvent.getSeverity() ),
-				message = arguments.logEvent.getMessage(),
-				logger = arguments.logEvent.getcategory()
+				level 	= level,
+				message = message,
+				logger = loggerCat
 			);
 				
 		} else {
 			
 			variables.sentryService.captureMessage(
-				message	= arguments.logEvent.getMessage(),
-				level 	= this.logLevels.lookup( arguments.logEvent.getSeverity() ),
-				logger = arguments.logEvent.getcategory() 
+				message	= message,
+				level 	= level,
+				logger = loggerCat 
 			);
 				
 		}
