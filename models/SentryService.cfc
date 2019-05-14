@@ -86,7 +86,7 @@ component accessors=true singleton {
 		setEnvironment( settings.environment );
 		setServerName( settings.serverName );
 		setAsync( settings.async );
-		setSentryVersion( settings.sentryVersion )
+		setSentryVersion( settings.sentryVersion );
 		setLogger( settings.logger );
 		setPlatform( settings.platform );
 		
@@ -380,7 +380,7 @@ component accessors=true singleton {
 		*/
 		var thisUserInfo = {
 			'ip_address' = getRealIP()
-		}
+		};
 		var userInfoUDF = getUserInfoUDF();
 		if( isCustomFunction( userInfoUDF ) ) {
 			local.tmpUserInfo = userInfoUDF();
