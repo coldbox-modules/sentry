@@ -417,13 +417,17 @@ component accessors=true singleton {
 			"method" 		: arguments.cgiVars.request_method,
 			"data" 			: sanitizeFields( form ),
 			"query_string" 	: sanitizeQueryString( arguments.cgiVars.query_string ),
-			"cookies" 		: cookie,
+							// Sentry requires all cookies be strings
+			"cookies" 		: cookie.map( function( k, v ) {
+								return toString( v );
+							} ),
 			"env" 			: arguments.cgiVars,
 			"headers" 		: sanitizeHeaders( httpRequestData.headers )
 		};
 		
-		// encode data
-		jsonCapture = jsonEncode(arguments.captureStruct);
+		// serialize data
+		jsonCapture = serializeJSON(arguments.captureStruct);
+		
 		// prepare header
 		header = "Sentry sentry_version=#getSentryVersion()#, sentry_timestamp=#timeVars.time#, sentry_key=#getPublicKey()#, sentry_secret=#getPrivateKey()#, sentry_client=Sentry/#moduleConfig.version#";
 		// post message
@@ -466,174 +470,6 @@ component accessors=true singleton {
 		} else if (!find("200",http.statuscode)){
 			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
 		}
-	}
-
-	/**
-	* Custom Serializer that converts data from CF to JSON format
-	* in a better way
-	*/
-	private string function jsonEncode(
-		required any data,
-		string queryFormat = "query",
-		string queryKeyCase = "lower",
-		boolean stringNumbers = false,
-		boolean formatDates = false,
-		string columnListFormat = "string"
-	) {
-		var jsonString 		= "";
-		var tempVal 		= "";
-		var arKeys 			= "";
-		var colPos 			= 1;
-		var i 				= 1;
-		var column 			= "";
-		var row 			= {};
-		var datakey 		= "";
-		var recordcountkey 	= "";
-		var columnlist 		= "";
-		var columnlistkey 	= "";
-		var dJSONString 	= "";
-		var escapeToVals 	= "\\,\"",\/,\b,\t,\n,\f,\r";
-		var escapeVals 		= "\,"",/,#Chr(8)#,#Chr(9)#,#Chr(10)#,#Chr(12)#,#Chr(13)#";
-		var _data 			= arguments.data;
-		var rtn 			= "";
-
-		// BOOLEAN
-		if (isBoolean(_data) && !isNumeric(_data) && !listFindNoCase("Yes,No", _data)){
-			rtn = lCase(toString(_data));
-		}
-		// NUMBER
-		else if (!stringNumbers && isNumeric(_data) && !reFind("^0+[^\.]",_data)){
-			rtn = toString(_data);
-		}
-		// DATE
-		else if (isDate(_data) && arguments.formatDates){
-			rtn = '"' & dateTimeFormat(_data, "medium") & '"';
-		}
-		// STRING
-		else if (isSimpleValue(_data)){
-			rtn = '"' & replaceList(_data, escapeVals, escapeToVals) & '"';
-		}
-		// ARRAY
-		else if (isArray(_data)){
-			dJSONString = createObject("java","java.lang.StringBuffer").init("");
-			for (i = 1; i <= arrayLen(_data); i++){
-				if (arrayIsDefined(_data,i))
-					tempVal = jsonEncode( _data[i], arguments.queryFormat, arguments.queryKeyCase, arguments.stringNumbers, arguments.formatDates, arguments.columnListFormat );
-				else
-					tempVal = jsonEncode( "null", arguments.queryFormat, arguments.queryKeyCase, arguments.stringNumbers, arguments.formatDates, arguments.columnListFormat );
-
-				if (len(dJSONString.toString()))
-					dJSONString.append("," & tempVal);
-				else
-					dJSONString.append(tempVal);
-			}
-			rtn = "[" & dJSONString.toString() & "]";
-		}
-		// STRUCT
-		else if (isStruct(_data)){
-			dJSONString = createObject("java","java.lang.StringBuffer").init("");
-			arKeys 		= structKeyArray(_data);
-			for (i = 1; i <= arrayLen(arKeys); i++){
-				tempVal = jsonEncode( _data[ arKeys[i] ], arguments.queryFormat, arguments.queryKeyCase, arguments.stringNumbers, arguments.formatDates, arguments.columnListFormat );
-
-				if (len(dJSONString.toString()))
-					dJSONString.append(',"' & arKeys[i] & '":' & tempVal);
-				else
-					dJSONString.append('"' & arKeys[i] & '":' & tempVal);
-			}
-			rtn = "{" & dJSONString.toString() & "}";
-		}
-		//  QUERY
-		else if (isQuery(_data)){
-			dJSONString = createObject("java","java.lang.StringBuffer").init("");
-
-			// Add query meta data
-			if (!compareNoCase(arguments.queryKeyCase,"lower")){
-				recordcountKey 	= "recordcount";
-				columnlistKey 	= "columnlist";
-				columnlist 		= lCase(_data.columnlist);
-				dataKey 		= "data";
-			} else {
-				recordcountKey 	= "RECORDCOUNT";
-				columnlistKey 	= "COLUMNLIST";
-				columnlist 		= _data.columnlist;
-				dataKey 		= "DATA";
-			}
-
-			dJSONString.append('"#recordcountKey#":' & _data.recordcount);
-
-			if (!compareNoCase(arguments.columnListFormat,"array")){
-				columnlist = "[" & ListQualify(columnlist, '"') & "]";
-				dJSONString.append(',"#columnlistKey#":' & columnlist);
-			} else {
-				dJSONString.append(',"#columnlistKey#":"' & columnlist & '"');
-			}
-
-			dJSONString.append(',"#dataKey#":');
-
-			// Make query a structure of arrays
-			if (!compareNoCase(arguments.queryFormat,"query")){
-				dJSONString.append("{");
-				colPos = 1;
-
-				for (column in _data.columnlist){
-					if (colPos > 1)
-						dJSONString.append(",");
-					if (!compareNoCase(arguments.queryKeyCase,"lower"))
-						column = lCase(column);
-
-					dJSONString.append('"' & column & '":[');
-					i = 1;
-					for (row in _data){
-						if (i > 1)
-							dJSONString.append(",");
-						tempVal = jsonEncode( row[column], arguments.queryFormat, arguments.queryKeyCase, arguments.stringNumbers, arguments.formatDates, arguments.columnListFormat );
-						dJSONString.append(tempVal);
-						i++;
-					}
-					dJSONString.append("]");
-					colPos++;
-				}
-
-				dJSONString.append("}");
-			}
-			// Make query an array of structures
-			else {
-				dJSONString.append("[");
-				i = 1;
-
-				for (row in _data){
-					if (i > 1)
-						dJSONString.append(",");
-					dJSONString.append("{");
-					colPos = 1;
-
-					for (column in _data.columnlist){
-						if (colPos > 1)
-							dJSONString.append(",");
-						if (!compareNoCase(arguments.queryKeyCase,"lower"))
-							column = lCase(column);
-						tempVal = jsonEncode( row[column], arguments.queryFormat, arguments.queryKeyCase, arguments.stringNumbers, arguments.formatDates, arguments.columnListFormat );
-						dJSONString.append('"' & column & '":' & tempVal);
-						colPos++;
-					}
-					dJSONString.append("}");
-				}
-				dJSONString.append("]");
-			}
-			// Wrap all query data into an object
-			rtn = "{" & dJSONString.toString() & "}";
-		}
-		// FUNCTION
-		else if ( isCustomFunction( _data ) ){
-			rtn = '"' & "function()" & '"';
-		}
-		// UNKNOWN OBJECT TYPE
-		else {
-			rtn = '"' & "unknown-obj" & '"';
-		}
-
-		return rtn;
 	}
 
 	/**
@@ -693,7 +529,10 @@ component accessors=true singleton {
 				}
 			}
 		}
-		return arguments.headers;
+		// Sentry requires all headers be strings
+		return arguments.headers.map( function( k, v ) {
+			return toString( v );
+		} );
 	}
 
 	/**
