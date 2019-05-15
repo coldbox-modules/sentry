@@ -399,7 +399,7 @@ component accessors=true singleton {
 		};
 		
 		var event = controller.getRequestService().getContext();
-		var userInfoUDF = getUserInfoUDF( event, rc, prc, controller );
+		var userInfoUDF = getUserInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller );
 		if( isCustomFunction( userInfoUDF ) ) {
 			local.tmpUserInfo = userInfoUDF();
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
