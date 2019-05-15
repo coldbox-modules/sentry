@@ -39,7 +39,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 		}
 	
 		// Is this an exception or not?
-		if( isStruct( extraInfo ) && structKeyExists( extraInfo, "StackTrace" ) ){
+		if( isStruct( extraInfo ) && extraInfo.keyExists( "StackTrace" ) ){
 			
 			variables.sentryService.captureException(
 				exception = extraInfo,
@@ -48,7 +48,22 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 				logger = loggerCat
 			);
 				
+		} else if( isStruct( extraInfo ) && extraInfo.keyExists( "exception" ) && isStruct( extraInfo.exception ) && extraInfo.exception.keyExists( "StackTrace" ) ){
+			
+			var trimmedExtra = structCopy( extraInfo );
+			trimmedExtra.delete( 'exception' );
+			
+			variables.sentryService.captureException(
+				exception = extraInfo.exception,
+				level 	= level,
+				message = message,
+				logger = loggerCat,
+				additionalData = trimmedExtra
+			);
+				
 		} else {
+			
+			writeDump(logEvent);abort;
 			
 			variables.sentryService.captureMessage(
 				message	= message,
