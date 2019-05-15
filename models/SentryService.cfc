@@ -10,6 +10,7 @@ component accessors=true singleton {
 	// DI
 	property name="settings" inject="coldbox:moduleSettings:sentry";
 	property name="moduleConfig" inject="coldbox:moduleConfig:sentry";
+	property name="controller" inject="coldbox";
 
 
 	property name="levels" type="array";
@@ -184,11 +185,13 @@ component accessors=true singleton {
 			"sentry.interfaces.Message" : {
 				"message" : arguments.message
 			},
-			"logger" = arguments.logger
+			"logger" = arguments.logger,
+			"extra" = {test:true}
 		};
 
-		if(structKeyExists(arguments,"params"))
+		if(structKeyExists(arguments,"params")) {
 			sentryMessage["sentry.interfaces.Message"]["params"] = arguments.params;
+		}
 
 		capture(
 			captureStruct 	: sentryMessage,
@@ -394,7 +397,9 @@ component accessors=true singleton {
 		var thisUserInfo = {
 			'ip_address' = getRealIP()
 		};
-		var userInfoUDF = getUserInfoUDF();
+		
+		var event = controller.getRequestService().getContext();
+		var userInfoUDF = getUserInfoUDF( event, rc, prc, controller );
 		if( isCustomFunction( userInfoUDF ) ) {
 			local.tmpUserInfo = userInfoUDF();
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {

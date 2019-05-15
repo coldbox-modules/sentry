@@ -62,9 +62,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 			);
 				
 		} else {
-			
-			writeDump(logEvent);abort;
-			
+						
 			variables.sentryService.captureMessage(
 				message	= message,
 				level 	= level,
