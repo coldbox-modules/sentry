@@ -58,7 +58,7 @@ script:
   # Build Project
   - box task run taskfile=build/Build target=run :version=${TARGET_VERSION} :projectName=${MODULE_ID} :buildID=${TRAVIS_BUILD_NUMBER} :branch=${TRAVIS_BRANCH}
   # Cat results for debugging
-  #- cat build/results.json
+  - cat build/results.json
 
 after_failure:
   - cd $TRAVIS_BUILD_DIR/test-harness

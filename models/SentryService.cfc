@@ -61,9 +61,13 @@ component accessors=true singleton {
 		
 		setEnabled( true );
 		
+		if ( len( settings.sentryUrl ) ) {
+			setSentryUrl( settings.sentryUrl );
+		}
+		
 		if( len( settings.DSN ) ) {
 			setDSN( settings.DSN );
-			parseDSN(arguments.DSN);
+			parseDSN( settings.DSN );
 		} else if( len( settings.publicKey ) && len( settings.privateKey ) && len( settings.projectID ) ) {
 			setPublicKey( settings.publicKey );
 			setPrivateKey( settings.privateKey );
@@ -74,10 +78,6 @@ component accessors=true singleton {
 			setProjectID( 0 );
 			setEnabled( false );
 			writeDump( var="You must configure in a valid DSN or Project Keys and ID to instantiate the Sentry CFML Client.", output='console' );
-		}
-		
-		if ( len( settings.sentryUrl ) ) {
-			setSentryUrl( settings.sentryUrl );
 		}
 		
 		setLevels(["fatal","error","warning","info","debug"]);
@@ -94,31 +94,44 @@ component accessors=true singleton {
 	}
 
 	/**
-	* Parses a valid Legacy Sentry DSN
+	* Parses a valid Sentry DSN
+	* 
 	* {PROTOCOL}://{PUBLIC_KEY}:{SECRET_KEY}@{HOST}/{PATH}{PROJECT_ID}
+	* or
+	* {PROTOCOL}://{PUBLIC_KEY}@{HOST}/{PATH}{PROJECT_ID}
+	* 
 	* https://docs.sentry.io/clientdev/overview/#parsing-the-dsn
 	*/
 	private void function parseDSN(required string DSN) {
-		var pattern = "^(?:(\w+):)?\/\/(\w+):(\w+)?@([\w\.-]+)\/(.*)";
+		var pattern = "^(?:(\w+):)?\/\/(\w+)(:\w+)?@([\w\.-]+)\/(.*)";
 		var result 	= reFind(pattern,arguments.DSN,1,true);
 		var segments = [];
 
 		for(var i=2; i LTE ArrayLen(result.pos); i++){
-			segments.append(mid(arguments.DSN, result.pos[i], result.len[i]));
+			// If the secret key is ommitted, the capture group will have a pos and len of 0
+			if( result.len[i] ) {
+				segments.append(mid(arguments.DSN, result.pos[i], result.len[i]));
+			}
 		}
-
-		if (compare(segments.len(),5)){
-			throw(message="Error parsing DSN");
-		}
-
-
-		// set the properties
-		else {
+		
+		if ( segments.len() == 4 ){
+			
+			setSentryUrl(segments[1] & "://" & segments[3]);
+			setPublicKey(segments[2]);
+			setProjectID(segments[4]);
+			
+		} else if ( segments.len() == 5 ){
+			
 			setSentryUrl(segments[1] & "://" & segments[4]);
 			setPublicKey(segments[2]);
 			setPrivateKey(segments[3]);
 			setProjectID(segments[5]);
-		}
+			
+		} else {
+			throw(message="Error parsing Sentry DSN");			
+		} 
+
+
 	}
 
 	/**
@@ -424,7 +437,6 @@ component accessors=true singleton {
 			"env" 			: arguments.cgiVars,
 			"headers" 		: sanitizeHeaders( httpRequestData.headers )
 		};
-		
 		// serialize data
 		jsonCapture = serializeJSON(arguments.captureStruct);
 		
@@ -454,6 +466,7 @@ component accessors=true singleton {
 	) {
 		var http = {};
 		// send to sentry via REST API Call
+		
 		cfhttp(
 			url 	: getSentryUrl() & "/api/store/",
 			method 	: "post",
