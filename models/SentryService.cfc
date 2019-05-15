@@ -405,9 +405,9 @@ component accessors=true singleton {
 		};
 		
 		var event = controller.getRequestService().getContext();
-		var userInfoUDF = getUserInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller );
+		var userInfoUDF = getUserInfoUDF();
 		if( isCustomFunction( userInfoUDF ) ) {
-			local.tmpUserInfo = userInfoUDF();
+			local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller  );
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
 				thisUserInfo.append( local.tmpUserInfo );
 			}
