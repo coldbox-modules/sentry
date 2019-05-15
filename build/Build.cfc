@@ -80,7 +80,7 @@ component{
      * Run the test suites
      */
     function runTests(){
-    	return;
+    	
         // Tests First, if they fail then exit
         print.blueLine( "Testing the package, please wait..." ).toConsole();
 

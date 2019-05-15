@@ -80,10 +80,11 @@
 				"levelMax" : "ERROR",
 				// Enable/disable error logging
 				"enableExceptionLogging" = true,
-				"publicKey" : getSystemSetting( "SENTRY_PUBLICKEY", "" ),
-				"privateKey" : getSystemSetting( "SENTRY_PRIVATEKEY", "" ),
-				"projectID" : getSystemSetting( "SENTRY_PROJECTID", "" ),
-				"sentryUrl" : getSystemSetting( "SENTRY_URL", "" ),
+				//"publicKey" : getSystemSetting( "SENTRY_PUBLICKEY", "" ),
+				//"privateKey" : getSystemSetting( "SENTRY_PRIVATEKEY", "" ),
+				//"projectID" : getSystemSetting( "SENTRY_PROJECTID", "" ),
+				//"sentryUrl" : getSystemSetting( "SENTRY_URL", "" ),
+				DSN : getSystemSetting( "SENTRY_DSN", "" ),
 				async : false,
 				userInfoUDF = function(){
 					return {

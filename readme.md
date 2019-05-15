@@ -17,7 +17,7 @@ Apache License, Version 2.0.
 
 ## SYSTEM REQUIREMENTS
 
-- Adobe ColdFusion 11+
+- Adobe ColdFusion 2016+
 - Lucee 5
 
 ## Instructions
