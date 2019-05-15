@@ -10,6 +10,7 @@ component accessors=true singleton {
 	// DI
 	property name="settings" inject="coldbox:moduleSettings:sentry";
 	property name="moduleConfig" inject="coldbox:moduleConfig:sentry";
+	property name="controller" inject="coldbox";
 
 
 	property name="levels" type="array";
@@ -157,6 +158,7 @@ component accessors=true singleton {
 	* @cgiVars Parameters to send to Sentry, defaults to the CGI Scope
 	* @useThread Option to send post to Sentry in its own thread
 	* @userInfo Optional Struct that gets passed to the Sentry User Interface
+	* @additionalData Additional metadata to store with the event - passed into the extra attribute
 	*/
 	public any function captureMessage(
 		required string message,
@@ -166,7 +168,8 @@ component accessors=true singleton {
 		any cgiVars = cgi,
 		boolean useThread = getAsync(),
 		struct userInfo = {},
-		string logger=getLogger()
+		string logger=getLogger(),
+		any additionalData
 	) {
 		if( !getEnabled() ) {
 			return;
@@ -187,8 +190,14 @@ component accessors=true singleton {
 			"logger" = arguments.logger
 		};
 
-		if(structKeyExists(arguments,"params"))
+		if(structKeyExists(arguments,"params")) {
 			sentryMessage["sentry.interfaces.Message"]["params"] = arguments.params;
+		}
+
+
+		if ( !isNull(additionalData) ) {
+			sentryMessage["extra"] = additionalData;
+		}
 
 		capture(
 			captureStruct 	: sentryMessage,
@@ -394,7 +403,9 @@ component accessors=true singleton {
 		var thisUserInfo = {
 			'ip_address' = getRealIP()
 		};
-		var userInfoUDF = getUserInfoUDF();
+		
+		var event = controller.getRequestService().getContext();
+		var userInfoUDF = getUserInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller );
 		if( isCustomFunction( userInfoUDF ) ) {
 			local.tmpUserInfo = userInfoUDF();
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
