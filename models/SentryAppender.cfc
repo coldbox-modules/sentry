@@ -66,7 +66,8 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 			variables.sentryService.captureMessage(
 				message	= message,
 				level 	= level,
-				logger = loggerCat 
+				logger = loggerCat,
+				additionalData = extraInfo
 			);
 				
 		}

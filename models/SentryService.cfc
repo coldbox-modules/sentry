@@ -158,6 +158,7 @@ component accessors=true singleton {
 	* @cgiVars Parameters to send to Sentry, defaults to the CGI Scope
 	* @useThread Option to send post to Sentry in its own thread
 	* @userInfo Optional Struct that gets passed to the Sentry User Interface
+	* @additionalData Additional metadata to store with the event - passed into the extra attribute
 	*/
 	public any function captureMessage(
 		required string message,
@@ -167,7 +168,8 @@ component accessors=true singleton {
 		any cgiVars = cgi,
 		boolean useThread = getAsync(),
 		struct userInfo = {},
-		string logger=getLogger()
+		string logger=getLogger(),
+		any additionalData
 	) {
 		if( !getEnabled() ) {
 			return;
@@ -185,12 +187,16 @@ component accessors=true singleton {
 			"sentry.interfaces.Message" : {
 				"message" : arguments.message
 			},
-			"logger" = arguments.logger,
-			"extra" = {test:true}
+			"logger" = arguments.logger
 		};
 
 		if(structKeyExists(arguments,"params")) {
 			sentryMessage["sentry.interfaces.Message"]["params"] = arguments.params;
+		}
+
+
+		if ( !isNull(additionalData) ) {
+			sentryMessage["extra"] = additionalData;
 		}
 
 		capture(

@@ -35,6 +35,10 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 				service.captureMessage( 'This is a test message' );
 			});
 
+			it( 'can log via LogBox', function(){
+				getLogbox().getRootLogger().error( 'Custom Boom', { "extra" : "info" } );
+			});
+
 			it( 'should trap exceptions and do logging', function(){
 				expect(	function(){
 					execute( 'main.index' );
