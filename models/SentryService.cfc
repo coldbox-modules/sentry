@@ -404,13 +404,19 @@ component accessors=true singleton {
 			'ip_address' = getRealIP()
 		};
 		
-		var event = controller.getRequestService().getContext();
 		var userInfoUDF = getUserInfoUDF();
+		// If there is a closure to produce user info, call it
 		if( isCustomFunction( userInfoUDF ) ) {
+			
+			// Prepare the request context for the closure to use
+			var event = controller.getRequestService().getContext();
+			// Call the custon closure to produce user info
 			local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller  );
+			
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
 				thisUserInfo.append( local.tmpUserInfo );
 			}
+			
 		}
 		if ( !arguments.userInfo.isEmpty() ) {
 			thisUserInfo.append( arguments.userInfo );
