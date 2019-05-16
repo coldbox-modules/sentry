@@ -64,6 +64,11 @@ component {
 				var boxJSON = deserializeJSON( boxJSONRaw );
 				if( boxJSON.keyExists( 'version' ) ) {
 					settings.release = boxJSON.version;
+					if( boxJSON.keyExists( 'slug' ) ) {
+						settings.release = boxJSON.slug & '@' & settings.release;
+					} else if( boxJSON.keyExists( 'name' ) ) {
+						settings.release = boxJSON.name & '@' & settings.release;
+					}
 				}
 			}
 		}
