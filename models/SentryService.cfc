@@ -196,6 +196,11 @@ component accessors=true singleton {
 
 
 		if ( !isNull(additionalData) ) {
+			if( !isStruct( additionalData ) ) {
+				additionalData = {
+					additionalData : additionalData
+				};
+			}
 			sentryMessage["extra"] = additionalData;
 		}
 
@@ -408,10 +413,16 @@ component accessors=true singleton {
 		// If there is a closure to produce user info, call it
 		if( isCustomFunction( userInfoUDF ) ) {
 			
-			// Prepare the request context for the closure to use
-			var event = controller.getRequestService().getContext();
-			// Call the custon closure to produce user info
-			local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller  );
+			// Check for a non-ColdBox context
+			if( isNull( controller ) ) {
+				// Call the custon closure to produce user info
+				local.tmpUserInfo = userInfoUDF();
+			} else {				
+				// Prepare the request context for the closure to use
+				var event = controller.getRequestService().getContext();
+				// Call the custon closure to produce user info
+				local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller  );	
+			}
 			
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
 				thisUserInfo.append( local.tmpUserInfo );

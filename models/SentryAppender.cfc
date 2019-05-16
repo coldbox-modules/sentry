@@ -19,8 +19,11 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 	){
 		super.init( argumentCollection=arguments );
 		
-		// Get sentry Service, wirebox must be in application scope.
-		variables.sentryService = application.wirebox.getInstance( "SentryService@sentry" );
+		// Get sentry Service from WireBox if it's not already passed to the appender
+		if( !propertyExists( 'sentryService' ) ) {
+			// wirebox must be in application scope.
+			setPropery( 'sentryService', application.wirebox.getInstance( "SentryService@sentry" ) );	
+		}
 		
 		return this;
 	}
@@ -28,7 +31,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 	/**
 	 * Log a message
 	 */
-	public void function logMessage( required coldbox.system.logging.LogEvent logEvent ){
+	public void function logMessage( required logEvent ){
 		var extraInfo = arguments.logEvent.getExtraInfo();
 		var level = this.logLevels.lookup( arguments.logEvent.getSeverity() );
 		var message = arguments.logEvent.getMessage();
@@ -41,7 +44,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 		// Is this an exception or not?
 		if( isStruct( extraInfo ) && extraInfo.keyExists( "StackTrace" ) ){
 			
-			variables.sentryService.captureException(
+			getProperty( 'sentryService' ).captureException(
 				exception = extraInfo,
 				level 	= level,
 				message = message,
@@ -53,7 +56,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 			var trimmedExtra = structCopy( extraInfo );
 			trimmedExtra.delete( 'exception' );
 			
-			variables.sentryService.captureException(
+			getProperty( 'sentryService' ).captureException(
 				exception = extraInfo.exception,
 				level 	= level,
 				message = message,
@@ -63,7 +66,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 				
 		} else {
 						
-			variables.sentryService.captureMessage(
+			getProperty( 'sentryService' ).captureMessage(
 				message	= message,
 				level 	= level,
 				logger = loggerCat,
