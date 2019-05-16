@@ -22,7 +22,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 		// Get sentry Service from WireBox if it's not already passed to the appender
 		if( !propertyExists( 'sentryService' ) ) {
 			// wirebox must be in application scope.
-			setPropery( 'sentryService', application.wirebox.getInstance( "SentryService@sentry" ) );	
+			setProperty( 'sentryService', application.wirebox.getInstance( "SentryService@sentry" ) );	
 		}
 		
 		return this;
