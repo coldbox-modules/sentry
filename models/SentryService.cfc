@@ -72,7 +72,7 @@ component accessors=true singleton {
 		return {
 		    // Enable the Sentry LogBox Appender Bridge
 		    'enableLogBoxAppender' = true,
-		    'async' = false,
+		    'async' = true,
 		    // Min/Max levels for appender
 		    'levelMin' = 'FATAL',
 		    'levelMax' = 'ERROR',
@@ -474,7 +474,7 @@ component accessors=true singleton {
 				// Prepare the request context for the closure to use
 				var event = controller.getRequestService().getContext();
 				// Call the custon closure to produce user info
-				local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection(), controller  );	
+				local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection() );	
 			}
 			
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {

@@ -127,31 +127,34 @@ settings = {
   levelMax : 'ERROR',
   // auto-register onException interceptor
   enableExceptionLogging : true,
-  async : false,
-  // Don't sent URL or FORM fields of these names to Sentry
+  // Send messages to Sentry in a thread
+  async : true,
+  // Don't sent URL or FORM field values of these names to Sentry
   scrubFields : [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
-  // Don't sent HTTP headers of these names to Sentry
+  // Don't sent HTTP header values of these names to Sentry
   scrubHeaders : [ 'x-api-token', 'Authorization' ],
-  // The current release of your app, used with Sentry release/deploy tracking
+  // The current release of your app, used with Sentry release/deploy tracking. Ex. "myApp@2.3.0"
   release : '',
   // App environment, used to control notifications and filtering
   environment : 'production',
-  // Client connection string for this project. Mutex with next 4 settings
+  // Client connection string for this project. Mutually exclusive with next 4 settings
+  // Get this from the "settings" page on a project under "Client Keys (DSN)" 
   DSN : '',
-  // Sentry public client key for this project
+  // Sentry public client key for this project. (Not needed when using DSN)
   publicKey : '',
-  // Sentry public client key for this project
+  // Sentry public client key for this project (Not needed when using DSN)
   privateKey : '',
-  // Sentry projectID
+  // Sentry projectID (Not needed when using DSN)
   projectID : 0,
-  // URL of your Sentry server
+  // URL of your Sentry server (Not needed when using DSN)
   sentryUrl : 'https://sentry.io',
   // name of your server
   serverName : cgi.server_name,
-  // Default logger category. Logbox appender will pass through the LogBox category name 
+  // Default logger category. LogBox appender will pass through the LogBox category name 
   logger : 'sentry',
-  // Closure to return dynamic info of logged in user
-  userInfoUDF : function(){
+  // Closure to return dynamic info of logged in user which will appear in Sentry error reports under "User".
+  // No args are passed to the closure when used outside of a ColdBox app. 
+  userInfoUDF : function( event, rc, prc ){
     return {
       // Standard user data Sentry looks for
       id : 123
