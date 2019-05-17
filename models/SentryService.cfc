@@ -12,7 +12,6 @@ component accessors=true singleton {
 	property name="moduleConfig" inject="coldbox:moduleConfig:sentry";
 	property name="controller" inject="coldbox";
 
-
 	property name="levels" type="array";
 
 	/** The environment name, such as ‘production’ or ‘staging’. */
@@ -52,7 +51,42 @@ component accessors=true singleton {
 	 * Constructor
 	 */
 	function init(){
+		setSettings( {} );
 		return this;
+	}
+
+	private function getDefaultSettings() {
+		
+		// These are a duplicate of what's in the ModuleConfig.  I don't like
+		// having the here as well, but this is so this service can be used outside
+		// of ColdBox and not require the ModuleConfig.cfc
+		return {
+		    // Enable the Sentry LogBox Appender Bridge
+		    'enableLogBoxAppender' = true,
+		    'async' = false,
+		    // Min/Max levels for appender
+		    'levelMin' = 'FATAL',
+		    'levelMax' = 'ERROR',
+		    // Enable/disable error logging
+		    'enableExceptionLogging' = true,
+		    // Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
+		    'scrubFields' 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
+		    'scrubHeaders' 	= [ 'x-api-token', 'Authorization' ],
+		    'release' = '',
+			'environment' = 'production',
+			'DSN' = '',
+			'publicKey' = '',
+			'privateKey' = '',
+			'projectID' = 0,
+			'sentryUrl' = 'https://sentry.io',
+			'serverName' = cgi.server_name,
+			'sentryVersion' = 7,
+			// This is not arbityrary but must be a specific value. Leave as "cfml"
+			//  https://docs.sentry.io/development/sdk-dev/attributes/
+			'platform' = 'cfml',
+			'logger' = 'sentry',
+			'userInfoUDF' = ''
+		};
 	}
 
 	/**
@@ -61,6 +95,12 @@ component accessors=true singleton {
 	function onDIComplete() {
 		
 		setEnabled( true );
+		
+		// Add in default settings
+		settings.append(
+			getDefaultSettings(),
+			false
+		);
 		
 		if ( len( settings.sentryUrl ) ) {
 			setSentryUrl( settings.sentryUrl );
