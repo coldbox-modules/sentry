@@ -49,6 +49,7 @@ application.sentryService.captureException( exception=cfcatch, additionalData={ 
 ## LogBox Standalone Installation
 
 If your app doesn't use ColdBox but does use LogBox, you can use our `SentryAppender` class in your LogBox config.  You'll need to still instantiate the `SentryService` the same as above, but then you can just use the standard LogBox API to send your messages.
+This means if your app already has LogBox calls in place, simply adding the Sentry appender will start sending all those messages to Sentry without any app code changes on your part.  
 
 Here is an example LogBox standalone config file
 
