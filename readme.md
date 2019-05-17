@@ -89,9 +89,12 @@ application.logbox.getRootLogger().warn( 'winter is coming' );
 
 // Send an exception
 application.logbox.getRootLogger().error( message='Boom boom', extraInfo=cfcatch );
+
+// Send an exception plus other stuff
+application.logbox.getRootLogger().error( message='Boom boom', extraInfo={ exception: cfcatch, anything: 'here', as : 'well' );
 ```
 
-The `extraInfo` is optional, but if it is a cfcatch object or a struct containing a cfcatch object in a key called `exception`, the appender will use special treatment of the exception object.
+The `extraInfo` is optional, but if it is a cfcatch object or a struct containing a cfcatch object in a key called `exception`, the appender will use special treatment of the exception object.  Both of the examples above will extract the cfcatch and log to Sentry as an error which contain additional informatin over a simple text log message.
 
 ## ColdBox Installation
 
