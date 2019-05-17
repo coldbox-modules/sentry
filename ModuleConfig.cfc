@@ -31,7 +31,7 @@ component {
 			'ServerSideToken' = '',
 		    // Enable the Sentry LogBox Appender Bridge
 		    'enableLogBoxAppender' = true,
-		    'async' = false,
+		    'async' = true,
 		    // Min/Max levels for appender
 		    'levelMin' = 'FATAL',
 		    'levelMax' = 'ERROR',
