@@ -2,7 +2,7 @@
 
 # Welcome to the Sentry Module
 
-This module connects your ColdBox application to send bug reports and even LogBox integration into Sentry (https://sentry.io)
+This module connects your CFML application to send bug reports to Sentry (https://sentry.io)
 
 ## LICENSE
 
@@ -28,47 +28,136 @@ Just drop into your modules folder or use the `box` cli to install
 box install sentry
 ```
 
-## Settings
+## CFML App Installation
 
-Create the `sentry` structure inside the `moduleSettings` struct in your `config/Coldbox.cfc`:
+If your app uses neither ColdBox nor LogBox, you can still instantiate the `SentryService` and use it directly so long as you prep it with the settings it needs.
 
 ```js
-moduleSettings = {
-     sentry = {
-         // Enable the Sentry LogBox Appender Bridge
-         "enableLogBoxAppender" : true,
-         // Enable/disable error logging
-         "enableExceptionLogging" = true,
-         "publicKey" : getSystemSetting( "SENTRY_PUBLICKEY", "" ),
-         "privateKey" : getSystemSetting( "SENTRY_PRIVATEKEY", "" ),
-         "projectID" : 1,
+// Create Sentry service and load it with data
+application.sentryService = new modules.sentry.models.SentryService( {
          async : true,
-         // Closure to return dynamic info of logged in user
-         userInfoUDF = function(){
-             return {
-             	 // Standard user data Sentry looks for
-             	 id : 123
-                 username : 'woodsb',
-                 email : 'brad@bradwood.com',
-                 // Anything else you want
-                 cool : true
-             };
-         }
+         DSN : 'https://xxxxxxxxxx@sentry.io/3'
+	} );
+
+// Send a log message
+application.sentryService.captureMessage( 'winter is coming', 'warn' );
+
+// Send an exception
+application.sentryService.captureException( exception=cfcatch, additionalData={ anything : 'here' } );
+```
+
+## LogBox Standalone Installation
+
+If your app doesn't use ColdBox but does use LogBox, you can use our `SentryAppender` class in your LogBox config.  You'll need to still instantiate the `SentryService` the same as above, but then you can just use the standard LogBox API to send your messages.
+
+Here is an example LogBox standalone config file
+*MyLogBoxConfig.cfc*
+```js
+component{
+    function configure(){
+        logBox = {
+            appenders : {
+                sentry : {
+                    class : 'modules.sentry.models.SentryAppender',
+					levelMax : 'WARN',
+                    properties : {
+                    	sentryService : new sentry.models.SentryService( {
+						    async : true,
+							DSN : 'https://xxxxxxxxxx@sentry.io/3'
+						} )                    	
+                    }
+                }
+            },
+            root : { levelMax : 'INFO', appenders : '*' },
+            categories = {}
+        };
+    }
+}
+```
+
+Then create LogBox as normal and send your messages:
+```js
+application.logbox = new logbox.system.logging.LogBox(
+	new logbox.system.logging.config.LogBoxConfig( CFCConfigPath="config.MyLogBoxConfig" ) 
+);
+
+// Send a log message
+application.logbox.getRootLogger().warn( 'winter is coming' );
+
+// Send an exception
+application.logbox.getRootLogger().error( message='Boom boom', extraInfo=cfcatch );
+```
+
+The `extraInfo` is optional, but if it is a cfcatch object or a struct containing a cfcatch object in a key called `exception`, the appender will use special treatment of the exception object.
+
+## ColdBox Installation
+
+Lucky you, ColdBox provides you with the "easy street" method of using this module.  Simply by installing the module:
+* The LogBox appender will be registered automatically to capture all messages of FATAL or ERROR severity
+* An `onException` interceptor will be registerd to automatically log all errors that ColdBox sees.
+
+The only required configuration is your client DSN or auth keys so we can contact Sentry.  This configuration goes in `/config/ColdBox.cfc` in `moduleSettings.sentry` like so:
+
+ ```js
+ moduleSettings = {
+     sentry = {
+        async : true,
+		DSN : 'https://xxxxxxxxxx@sentry.io/3'
      }
 }
 ```
 
-## Usage
+## Settings
 
-Just by activating the module any exceptions will be sent to Sentry. The LogBox appender bridge is **activated** by default, and the Sentry appender is added as an appender to your application.  You can fine tune it via your main ColdBox logbox configuration file.
+Regardless of the installation method above, the settings for Sentry are mostly the same.  Here is the full list.  Note, `enableLogBoxAppender`, `levelMin`, `levelMax`, and `enableExceptionLogging` are only used in when installing Sentry into a ColdBox app.
+The default values are shown below.  Any settings you omit will use the default values.  
 
-### Exception Tracking
-
-The module will automatically listen for exceptions in any part of your application and send the exceptions over to sentry.
-
-### Logging
-
-You can use LogBox and any of its logging methods to send data to Sentry automatically using the required logging levels for the appender in the configuration.
+```js
+settings = {
+	 // Enable the Sentry LogBox Appender Bridge
+    enableLogBoxAppender = true,
+    // Min/Max levels for appender
+    levelMin = 'FATAL',
+    levelMax = 'ERROR',
+    // auto-register onException interceptor
+    enableExceptionLogging = true,
+    async = false,
+    // Don't sent URL or FORM fields of these names to Sentry
+    scrubFields 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
+    // Don't sent HTTP headers of these names to Sentry
+    scrubHeaders 	= [ 'x-api-token', 'Authorization' ],
+    // The current release of your app, used with Sentry release/deploy tracking
+    release = '',
+    // App environment, used to control notifications and filtering
+	environment = 'production',
+	// Client connection string for this project. Mutex with next 4 settings
+	DSN = '',
+	// Sentry public client key for this project
+	publicKey = '',
+	// Sentry public client key for this project
+	privateKey = '',
+	// Sentry projectID
+	projectID = 0,
+	// URL of your Sentry server
+	sentryUrl = 'https://sentry.io',
+	// name of your server
+	serverName = cgi.server_name,
+	// Default logger category. Logbox appender will pass through the LogBox category name 
+	logger = 'sentry',
+     // Closure to return dynamic info of logged in user
+     userInfoUDF = function(){
+         return {
+         	 // Standard user data Sentry looks for
+         	 id : 123
+             username : 'bwood',
+             email : 'brad@bradwood.com',
+             // Anything else you want
+             cool : true,
+             memberType : 'platinum'
+         };
+     }
+ }
+```
 
 ### Credit
 
