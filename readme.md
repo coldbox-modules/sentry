@@ -98,9 +98,9 @@ The `extraInfo` is optional, but if it is a cfcatch object or a struct containin
 
 ## ColdBox Installation
 
-Lucky you, ColdBox provides you with the "easy street" method of using this module.  Simply by installing the module:
-* The LogBox appender will be registered automatically to capture all messages of FATAL or ERROR severity
-* An `onException` interceptor will be registered to automatically log all errors that ColdBox sees.
+Lucky you, ColdBox provides you with the "easy street" method of using this module.  By just installing the module, the following things will happen automatically for you:
+* The Sentry LogBox appender we showed above will be registered to capture all messages of FATAL or ERROR severity
+* An `onException` interceptor will be registered to log all errors that ColdBox sees.
 
 The only required configuration is your client DSN or auth keys so we can contact Sentry.  This configuration goes in `/config/ColdBox.cfc` in `moduleSettings.sentry` like so:
 
