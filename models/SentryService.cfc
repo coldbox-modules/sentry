@@ -50,8 +50,17 @@ component accessors=true singleton {
 	/**
 	 * Constructor
 	 */
-	function init(){
-		setSettings( {} );
+	function init( struct settings={} ){
+		setSettings( arguments.settings );
+		// If we have settings passed to the init, this is likely not
+		// in WireBox context so just configure now
+		if( arguments.settings.count() ) {
+			configure();
+		}
+		setModuleConfig( {
+			version : '1.0.0'
+		} );
+		
 		return this;
 	}
 
@@ -93,6 +102,10 @@ component accessors=true singleton {
 	 * onDIComplete
 	 */	
 	function onDIComplete() {
+		configure();
+	}
+
+	function configure() {
 		
 		setEnabled( true );
 		
