@@ -305,9 +305,14 @@ component accessors=true singleton {
 		var file 					= "";
 		var fileArray 				= "";
 		var currentTemplate 		= "";
-		var tagContext 				= arguments.exception.TagContext;
+		var tagContext 				= arguments.exception.TagContext  ?: [];
 		var i 						= 1;
 		var st 						= "";
+
+		// If there's no tag context, include the stack trace instead
+		if( !tagContext.len() ) {
+			arguments.showJavaStackTrace = true;
+		}
 
 		arguments.level = validateLevel(arguments.level);
 
@@ -335,6 +340,61 @@ component accessors=true singleton {
 		if (!isNull(arguments.additionalData))
 			sentryExceptionExtra["Additional Data"] = arguments.additionalData;
 
+		// Applies to type = "database". Native error code associated with exception. Database drivers typically provide error codes to diagnose failing database operations. Default value is -1.
+		if( structKeyExists( arguments.exception, 'NativeErrorCode' ) ) {
+			sentryExceptionExtra[ "DataBase" ][ "NativeErrorCode" ] = arguments.exception.NativeErrorCode;
+		}
+		
+		// Applies to type = "database". SQLState associated with exception. Database drivers typically provide error codes to help diagnose failing database operations. Default value is 1.
+		if( structKeyExists( arguments.exception, 'SQLState' ) ) {
+			sentryExceptionExtra[ "DataBase" ][ "SQL State" ] = arguments.exception.SQLState;
+		}
+		
+		// Applies to type = "database". The SQL statement sent to the data source.
+		if( structKeyExists( arguments.exception, 'Sql' ) ) {
+			sentryExceptionExtra[ "DataBase" ][ "SQL" ] = arguments.exception.Sql;
+		}
+		
+		// Applies to type ="database". The error message as reported by the database driver.
+		if( structKeyExists( arguments.exception, 'queryError' ) ) {
+			sentryExceptionExtra[ "DataBase" ][ "Query Error" ] = arguments.exception.queryError;
+		}
+		
+		// Applies to type= "database". If the query uses the cfqueryparam tag, query parameter name-value pairs.
+		if( structKeyExists( arguments.exception, 'where' ) ) {
+			sentryExceptionExtra[ "DataBase" ][ "Where" ] = arguments.exception.where;
+		}
+		
+		// Applies to type = "expression". Internal expression error number.
+		if( structKeyExists( arguments.exception, 'ErrNumber' ) ) {
+			sentryExceptionExtra[ "expression" ][ "Error Number" ] = arguments.exception.ErrNumber;
+		}
+		
+		// Applies to type = "missingInclude". Name of file that could not be included.
+		if( structKeyExists( arguments.exception, 'MissingFileName' ) ) {
+			sentryExceptionExtra[ "missingInclude" ][ "Missing File Name" ] = arguments.exception.MissingFileName;
+		}
+		
+		// Applies to type = "lock". Name of affected lock (if the lock is unnamed, the value is "anonymous").
+		if( structKeyExists( arguments.exception, 'LockName' ) ) {
+			sentryExceptionExtra[ "lock" ][ "Lock Name" ] = arguments.exception.LockName;
+		}
+		
+		// Applies to type = "lock". Operation that failed (Timeout, Create Mutex, or Unknown).
+		if( structKeyExists( arguments.exception, 'LockOperation' ) ) {
+			sentryExceptionExtra[ "lock" ][ "Lock Operation" ] = arguments.exception.LockOperation;
+		}
+		
+		// Applies to type = "custom". String error code.
+		if( structKeyExists( arguments.exception, 'ErrorCode' ) ) {
+			sentryExceptionExtra[ "custom" ][ "Error Code" ] = arguments.exception.ErrorCode;
+		}
+		
+		// Applies to type = "application" and "custom". Custom error message; information that the default exception handler does not display.
+		if( structKeyExists( arguments.exception, 'ExtendedInfo' ) ) {
+			sentryExceptionExtra[ "application" ][ "Extended Info" ] = arguments.exception.ExtendedInfo;
+		}
+		
 		if (structCount(sentryExceptionExtra))
 			sentryException["extra"] = sentryExceptionExtra;
 
