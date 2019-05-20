@@ -53,9 +53,13 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 				try {
 					foo = createObject( 'java', 'java.io.File' ).init( getNull() );
 				} catch( any e ) {
-					e = structCopy( e );
-					e.delete( 'TagContext' );
-					getLogbox().getRootLogger().error( e.message, e );
+					var newE = {};
+					for( var key in e ) {
+						if( key != 'TagContext' ) {
+							newE[ key ] = e[ key ];
+						}
+					}
+					getLogbox().getRootLogger().error( 'Missing tag Context', newE );
 				}
 			});
 
