@@ -305,9 +305,14 @@ component accessors=true singleton {
 		var file 					= "";
 		var fileArray 				= "";
 		var currentTemplate 		= "";
-		var tagContext 				= arguments.exception.TagContext;
+		var tagContext 				= arguments.exception.TagContext  ?: [];
 		var i 						= 1;
 		var st 						= "";
+
+		// If there's no tag context, include the stack trace instead
+		if( !tagContext.len() ) {
+			arguments.showJavaStackTrace = true;
+		}
 
 		arguments.level = validateLevel(arguments.level);
 
