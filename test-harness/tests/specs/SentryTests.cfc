@@ -49,9 +49,8 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 			});
 
 			it( 'can log exception with no tagContext', function(){
-				var getNull = function(){};
 				try {
-					foo = createObject( 'java', 'java.io.File' ).init( getNull() );
+					throw( 'Missing tag Context' );
 				} catch( any e ) {
 					var newE = {};
 					for( var key in e ) {
@@ -63,6 +62,26 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 				}
 			});
 
+			it( 'can log exception with no tagContext', function(){
+				try {
+					throw( 'Extra Error Info' );
+				} catch( any e ) {
+					e.NativeErrorCode = 'This is my NativeErrorCode';
+					e.SQLState = 'This is my SQLState';
+					e.Sql = 'This is my Sql';
+					e.queryError = 'This is my queryError';
+					e.where = 'This is my where';
+					e.ErrNumber = 'This is my ErrNumber';
+					e.MissingFileName = 'This is my MissingFileName';
+					e.LockName = 'This is my LockName';
+					e.LockOperation = 'This is my LockOperation';
+					e.ErrorCode = 'This is my ErrorCode';
+					e.ExtendedInfo = 'This is my ExtendedInfo';
+					
+					getLogbox().getRootLogger().error( 'Extra Error Info', e );
+				}
+			});
+
 			it( 'should trap exceptions and do logging', function(){
 				expect(	function(){
 					execute( 'main.index' );
@@ -71,6 +90,8 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 
 		});
 	}
+
+
 
 	private function getSentry(){
 		return getWireBox().getInstance( 'SentryService@sentry' );
