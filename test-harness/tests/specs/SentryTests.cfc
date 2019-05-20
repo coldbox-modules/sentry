@@ -39,6 +39,26 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 				getLogbox().getRootLogger().error( 'Custom Boom', { "extra" : "info" } );
 			});
 
+			it( 'can log Java exception', function(){
+				var getNull = function(){};
+				try {
+					foo = createObject( 'java', 'java.io.File' ).init( getNull() );
+				} catch( any e ) {
+					getLogbox().getRootLogger().error( e.message, e );
+				}
+			});
+
+			it( 'can log exception with no tagContext', function(){
+				var getNull = function(){};
+				try {
+					foo = createObject( 'java', 'java.io.File' ).init( getNull() );
+				} catch( any e ) {
+					e = structCopy( e );
+					e.delete( 'TagContext' );
+					getLogbox().getRootLogger().error( e.message, e );
+				}
+			});
+
 			it( 'should trap exceptions and do logging', function(){
 				expect(	function(){
 					execute( 'main.index' );
