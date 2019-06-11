@@ -40,7 +40,7 @@ application.sentryService = new modules.sentry.models.SentryService( {
 } );
 
 // Send a log message
-application.sentryService.captureMessage( 'winter is coming', 'warn' );
+application.sentryService.captureMessage( 'winter is coming', 'warning' );
 
 // Send an exception
 application.sentryService.captureException( exception=cfcatch, additionalData={ anything : 'here' } );
