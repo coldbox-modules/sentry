@@ -62,7 +62,7 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 				}
 			});
 
-			it( 'can log exception with no tagContext', function(){
+			it( 'can log exception with Extra Error Info', function(){
 				try {
 					throw( 'Extra Error Info' );
 				} catch( any e ) {

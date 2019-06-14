@@ -192,9 +192,15 @@ component accessors=true singleton {
 	* Validates that a correct level was set for a capture
 	* The allowed levels are:
 	* 	"fatal","error","warning","info","debug"
+	* if you pass "warn", we'll switch it to "warning"
 	*/
 	private string function validateLevel(required string level) {
-		if(!getLevels().findNoCase(arguments.level)) {
+		
+		if( arguments.level == 'warn' ) {
+			arguments.level = 'warning';
+		}
+		
+		if( !getLevels().findNoCase( arguments.level ) ) {
 			throw( message="Error Type [#arguments.level#] is invalid. Must be one of the following : " & getLevels().toString() );
 		}
 		return lcase( arguments.level );
