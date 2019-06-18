@@ -432,8 +432,9 @@ component accessors=true singleton {
 				fileArray = [];
 				if (fileExists(thisTCItem["TEMPLATE"])) {
 					file = fileOpen(thisTCItem["TEMPLATE"], "read");
-					while (!fileIsEOF(file))
+					while (!fileIsEOF(file)) {
 						arrayAppend(fileArray, fileReadLine(file));
+					}
 					fileClose(file);
 				}
 				currentTemplate = thisTCItem["TEMPLATE"];
@@ -442,31 +443,45 @@ component accessors=true singleton {
 			var thisStackItem = {
 				"abs_path" 	= thisTCItem["TEMPLATE"],
 				"filename" 	= thisTCItem["TEMPLATE"],
-				"lineno" 	= thisTCItem["LINE"]
+				"lineno" 	= thisTCItem["LINE"],
+				"pre_context" = [],
+				"context_line" = '',
+				"post_context" = []
 			};
 
 			// The name of the function being called
-			if (i == 1)
+			if (i == 1) {
 				thisStackItem["function"] = "column #thisTCItem["COLUMN"]#";
-			else
+			} else {
 				thisStackItem["function"] = thisTCItem["ID"];
+			}
 
 			// for source code rendering
-			thisStackItem["pre_context"] = [];
-			if (thisTCItem["LINE"]-3 >= 1)
-				thisStackItem["pre_context"][1] = fileArray[thisTCItem["LINE"]-3];
-			if (thisTCItem["LINE"]-2 >= 1)
-				thisStackItem["pre_context"][1] = fileArray[thisTCItem["LINE"]-2];
-			if (thisTCItem["LINE"]-1 >= 1)
-				thisStackItem["pre_context"][2] = fileArray[thisTCItem["LINE"]-1];
-			if (arrayLen(fileArray))
-				thisStackItem["context_line"] = fileArray[thisTCItem["LINE"]];
-
-			thisStackItem["post_context"] = [];
-			if (arrayLen(fileArray) >= thisTCItem["LINE"]+1)
-				thisStackItem["post_context"][1] = fileArray[thisTCItem["LINE"]+1];
-			if (arrayLen(fileArray) >= thisTCItem["LINE"]+2)
-				thisStackItem["post_context"][2] = fileArray[thisTCItem["LINE"]+2];
+			var fileLen = arrayLen( fileArray );
+			var errorLine = thisTCItem[ "LINE" ];
+			var pre_context = thisStackItem["pre_context"];
+			var post_context = thisStackItem["post_context"];
+			
+			if (errorLine-3 >= 1 && errorLine-3 <= fileLen ) {
+				pre_context[1] = fileArray[errorLine-3];
+			}
+			if (errorLine-2 >= 1 && errorLine-2 <= fileLen) {
+				pre_context[1] = fileArray[errorLine-2];
+			}
+			if (errorLine-1 >= 1 && errorLine-1 <= fileLen) {
+				pre_context[2] = fileArray[errorLine-1];
+			}
+			
+			if (errorLine <= fileLen) {
+				thisStackItem["context_line"] = fileArray[errorLine];
+			}
+			
+			if (fileLen >= errorLine+1) {
+				post_context[1] = fileArray[errorLine+1];
+			}
+			if (fileLen >= errorLine+2) {
+				post_context[2] = fileArray[errorLine+2];
+			}
 				
 			sentryException["sentry.interfaces.Stacktrace"]["frames"][stacki] = thisStackItem;
 		}
