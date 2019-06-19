@@ -654,9 +654,8 @@ component accessors=true singleton {
 		var time 		= now();
 		var timeVars 	= {
 			"time" 			: time.getTime(),
-			"utcNowTime" 	: dateConvert("Local2UTC", time)
+			"timeStamp" 	: dateTimeFormat(time, "yyyy-mm-dd'T'HH:nn:ss", "UTC")
 		};
-		timeVars.timeStamp = dateformat(timeVars.utcNowTime, "yyyy-mm-dd") & "T" & timeFormat(timeVars.utcNowTime, "HH:mm:ss");
 		return timeVars;
 	}
 	
