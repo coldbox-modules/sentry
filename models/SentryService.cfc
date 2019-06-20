@@ -146,6 +146,8 @@ component accessors=true singleton {
 		setPlatform( settings.platform );
 		
 		setUserInfoUDF( settings.userInfoUDF );
+
+		settings.appRoot = normalizeSlashes( settings.appRoot );
 	}
 
 	/**
@@ -443,7 +445,7 @@ component accessors=true singleton {
 
 			var thisStackItem = {
 				"abs_path" 	= thisTCItem["TEMPLATE"],
-				"filename" 	= thisTCItem["TEMPLATE"].replace( variables.settings.appRoot, "" ).replace( "\", "/", "all" ),
+				"filename" 	= normalizeSlashes(thisTCItem["TEMPLATE"]).replace(variables.settings.appRoot, ""),
 				"lineno" 	= thisTCItem["LINE"],
 				"pre_context" = [],
 				"context_line" = '',
@@ -745,5 +747,18 @@ component accessors=true singleton {
 		} );
 		return arrayToList( aTarget, "&" );
 	}	
+
+	/**
+	 * Turns all slashes in a path to forward slashes except for \\ in a Windows UNC network share
+	 * Also changes double slashes to a single slash
+	 * @path The path to normalize
+	 */
+	function normalizeSlashes( string path ) {
+		var normalizedPath = arguments.path.replace( "\", "/", "all" );
+		if( arguments.path.left( 2 ) == "\\" ) {
+			normalizedPath = "\\" & normalizedPath.mid( 3, normalizedPath.len() - 2 );
+		} 
+		return normalizedPath.replace( "//", "/", "all" );	
+	}
 
 }
