@@ -48,6 +48,7 @@ component {
 			'projectID' = 0,
 			'sentryUrl' = 'https://sentry.io',
 			'serverName' = cgi.server_name,
+			'appRoot' = expandPath('/'),
 			'sentryVersion' = 7,
 			// This is not arbityrary but must be a specific value. Leave as "cfml"
 			//  https://docs.sentry.io/development/sdk-dev/attributes/

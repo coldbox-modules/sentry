@@ -70,18 +70,18 @@ component accessors=true singleton {
 		// having the here as well, but this is so this service can be used outside
 		// of ColdBox and not require the ModuleConfig.cfc
 		return {
-		    // Enable the Sentry LogBox Appender Bridge
-		    'enableLogBoxAppender' = true,
-		    'async' = true,
-		    // Min/Max levels for appender
-		    'levelMin' = 'FATAL',
-		    'levelMax' = 'ERROR',
-		    // Enable/disable error logging
-		    'enableExceptionLogging' = true,
-		    // Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
-		    'scrubFields' 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
-		    'scrubHeaders' 	= [ 'x-api-token', 'Authorization' ],
-		    'release' = '',
+			// Enable the Sentry LogBox Appender Bridge
+			'enableLogBoxAppender' = true,
+			'async' = true,
+			// Min/Max levels for appender
+			'levelMin' = 'FATAL',
+			'levelMax' = 'ERROR',
+			// Enable/disable error logging
+			'enableExceptionLogging' = true,
+			// Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
+			'scrubFields' 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
+			'scrubHeaders' 	= [ 'x-api-token', 'Authorization' ],
+			'release' = '',
 			'environment' = 'production',
 			'DSN' = '',
 			'publicKey' = '',
@@ -89,6 +89,7 @@ component accessors=true singleton {
 			'projectID' = 0,
 			'sentryUrl' = 'https://sentry.io',
 			'serverName' = cgi.server_name,
+			'appRoot' = expandPath('/'),
 			'sentryVersion' = 7,
 			// This is not arbityrary but must be a specific value. Leave as "cfml"
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
@@ -145,6 +146,8 @@ component accessors=true singleton {
 		setPlatform( settings.platform );
 		
 		setUserInfoUDF( settings.userInfoUDF );
+
+		settings.appRoot = normalizeSlashes( settings.appRoot );
 	}
 
 	/**
@@ -442,7 +445,7 @@ component accessors=true singleton {
 
 			var thisStackItem = {
 				"abs_path" 	= thisTCItem["TEMPLATE"],
-				"filename" 	= thisTCItem["TEMPLATE"],
+				"filename" 	= normalizeSlashes(thisTCItem["TEMPLATE"]).replace(variables.settings.appRoot, ""),
 				"lineno" 	= thisTCItem["LINE"],
 				"pre_context" = [],
 				"context_line" = '',
@@ -743,8 +746,19 @@ component accessors=true singleton {
 				return "#key#=#value#";
 		} );
 		return arrayToList( aTarget, "&" );
+	}	
+
+	/**
+	 * Turns all slashes in a path to forward slashes except for \\ in a Windows UNC network share
+	 * Also changes double slashes to a single slash
+	 * @path The path to normalize
+	 */
+	function normalizeSlashes( string path ) {
+		var normalizedPath = arguments.path.replace( "\", "/", "all" );
+		if( arguments.path.left( 2 ) == "\\" ) {
+			normalizedPath = "\\" & normalizedPath.mid( 3, normalizedPath.len() - 2 );
+		} 
+		return normalizedPath.replace( "//", "/", "all" );	
 	}
-
-
 
 }

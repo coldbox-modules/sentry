@@ -150,6 +150,9 @@ settings = {
   sentryUrl : 'https://sentry.io',
   // name of your server
   serverName : cgi.server_name,
+  // Absolute path to the root of your app, defaults to the webroot.
+  // files in stacktrace frames contained under this path will be reported relative to it
+  appRoot : expandPath('/'),
   // Default logger category. LogBox appender will pass through the LogBox category name 
   logger : 'sentry',
   // Closure to return dynamic info of logged in user which will appear in Sentry error reports under "User".
