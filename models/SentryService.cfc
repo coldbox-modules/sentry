@@ -686,7 +686,7 @@ component accessors=true singleton {
 			return trim( listLast( headers[ 'x-cluster-client-ip' ] ) );
 		}
 		if( structKeyExists( headers, 'X-Forwarded-For' ) ){
-			return trim( listLast( headers[ 'X-Forwarded-For' ] ) );
+			return trim( listFirst( headers[ 'X-Forwarded-For' ] ) );
 		}
 
 		return len( cgi.remote_addr ) ? trim( listLast( cgi.remote_addr ) ) : '127.0.0.1';
