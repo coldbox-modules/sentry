@@ -462,30 +462,28 @@ component accessors=true singleton {
 			// for source code rendering
 			var fileLen = arrayLen( fileArray );
 			var errorLine = thisTCItem[ "LINE" ];
-			var pre_context = thisStackItem["pre_context"];
-			var post_context = thisStackItem["post_context"];
-			
+
 			if (errorLine-3 >= 1 && errorLine-3 <= fileLen ) {
-				pre_context[1] = fileArray[errorLine-3];
+				thisStackItem.pre_context[1] = fileArray[errorLine-3];
 			}
 			if (errorLine-2 >= 1 && errorLine-2 <= fileLen) {
-				pre_context[1] = fileArray[errorLine-2];
+				thisStackItem.pre_context[1] = fileArray[errorLine-2];
 			}
 			if (errorLine-1 >= 1 && errorLine-1 <= fileLen) {
-				pre_context[2] = fileArray[errorLine-1];
+				thisStackItem.pre_context[2] = fileArray[errorLine-1];
 			}
-			
+
 			if (errorLine <= fileLen) {
 				thisStackItem["context_line"] = fileArray[errorLine];
 			}
-			
+
 			if (fileLen >= errorLine+1) {
-				post_context[1] = fileArray[errorLine+1];
+				thisStackItem.post_context[1] = fileArray[errorLine+1];
 			}
 			if (fileLen >= errorLine+2) {
-				post_context[2] = fileArray[errorLine+2];
+				thisStackItem.post_context[2] = fileArray[errorLine+2];
 			}
-				
+
 			sentryException["sentry.interfaces.Stacktrace"]["frames"][stacki] = thisStackItem;
 		}
 		
