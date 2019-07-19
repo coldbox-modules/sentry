@@ -11,6 +11,7 @@ component accessors=true singleton {
 	property name="settings" inject="coldbox:moduleSettings:sentry";
 	property name="moduleConfig" inject="coldbox:moduleConfig:sentry";
 	property name="controller" inject="coldbox";
+	property name="functionLineNums" inject="functionLineNums@funclinenums";
 
 	property name="levels" type="array";
 
@@ -148,6 +149,18 @@ component accessors=true singleton {
 		setUserInfoUDF( settings.userInfoUDF );
 
 		settings.appRoot = normalizeSlashes( settings.appRoot );
+
+		// in a non ColdBox context, ensure functionLineNums exists
+		// so this service can still be used if functionLineNums 
+		// is not passed in
+		if (isNull(variables.functionLineNums)) {
+			setFunctionLineNums({
+				findTagContextFunction: function() {
+					return '';
+				}
+			});
+		}
+
 	}
 
 	/**
@@ -453,10 +466,9 @@ component accessors=true singleton {
 			};
 
 			// The name of the function being called
-			if (i == 1) {
-				thisStackItem["function"] = "column #thisTCItem["COLUMN"]#";
-			} else {
-				thisStackItem["function"] = thisTCItem["ID"];
+			var functionName = functionLineNums.findTagContextFunction(thisTCItem);
+			if (len(functionName)) {
+				thisStackItem["function"] = functionName;
 			}
 
 			// for source code rendering
