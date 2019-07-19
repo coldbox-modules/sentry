@@ -16,3 +16,4 @@ logs/**
 # don't put token
 test-harness/config/token.cfm
 test-harness/.env
+/modules/

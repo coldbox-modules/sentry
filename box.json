@@ -1,7 +1,7 @@
 {
     "name":"Sentry",
     "author":"Ortus Solutions <info@ortussolutions.com>",
-    "version":"1.3.24",
+    "version":"1.3.25",
     "location":"https://downloads.ortussolutions.com/ortussolutions/coldbox-modules/sentry/@build.version@/sentry-@build.version@.zip",
     "slug":"sentry",
     "type":"modules",
@@ -24,7 +24,9 @@
         "funclinenums":"^1.1.0"
     },
     "devDependencies":{},
-    "installPaths":{},
+    "installPaths":{
+        "funclinenums":"modules/funclinenums/"
+    },
     "ignore":[
         "**/.*",
         "test-harness",
