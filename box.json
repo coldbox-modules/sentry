@@ -24,7 +24,9 @@
         "funclinenums":"^1.1.0"
     },
     "devDependencies":{},
-    "installPaths":{},
+    "installPaths":{
+        "funclinenums":"modules/funclinenums/"
+    },
     "ignore":[
         "**/.*",
         "test-harness",

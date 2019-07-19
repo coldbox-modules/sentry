@@ -408,12 +408,12 @@ component accessors=true singleton {
 		}
 		
 		// Applies to type = "custom". String error code.
-		if( structKeyExists( arguments.exception, 'ErrorCode' ) ) {
+		if( structKeyExists( arguments.exception, 'ErrorCode' ) && len( arguments.exception.ErrorCode ) && arguments.exception.ErrorCode != '0' ) {
 			sentryExceptionExtra[ "custom" ][ "Error Code" ] = arguments.exception.ErrorCode;
 		}
 		
 		// Applies to type = "application" and "custom". Custom error message; information that the default exception handler does not display.
-		if( structKeyExists( arguments.exception, 'ExtendedInfo' ) ) {
+		if( structKeyExists( arguments.exception, 'ExtendedInfo' ) && len( arguments.exception.ExtendedInfo ) ) {
 			sentryExceptionExtra[ "application" ][ "Extended Info" ] = arguments.exception.ExtendedInfo;
 		}
 		
