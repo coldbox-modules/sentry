@@ -42,6 +42,7 @@ script:
   - echo "Starting build for ${MODULE_ID} v${TARGET_VERSION}"
   # Replace version so builder can issue it
   - box package set version=@build.version@+@build.number@
+  - box install
   # Startup the harness
   - cd test-harness
   # run our dependency install to ensure the workbench is in place

@@ -46,6 +46,13 @@ application.sentryService.captureMessage( 'winter is coming', 'warning' );
 application.sentryService.captureException( exception=cfcatch, additionalData={ anything : 'here' } );
 ```
 
+This module makes use of the `funclinenums` module for the purpose of computing and reporting CFML function names in a stack trace. If you installed this via CommandBox, `funclinenums` was installed as a dependency for you. In a ColdBox app you don't need to do anything more, as WireBox will take care of wiring it up for you. However, in a non ColdBox app, if you want CFML function names reported in your stack trace you will need to add it to the `SentryService` yourself.
+
+```cfc
+functionLineNums = new modules.sentry.modules.funclinenums.functionLineNums();
+application.sentryService.setFunctionLineNums(functionLineNums);
+```
+
 ## LogBox Standalone Installation
 
 If your app doesn't use ColdBox but does use LogBox, you can use our `SentryAppender` class in your LogBox config.  You'll need to still instantiate the `SentryService` the same as above, but then you can just use the standard LogBox API to send your messages.

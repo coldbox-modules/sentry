@@ -11,6 +11,7 @@ component accessors=true singleton {
 	property name="settings" inject="coldbox:moduleSettings:sentry";
 	property name="moduleConfig" inject="coldbox:moduleConfig:sentry";
 	property name="controller" inject="coldbox";
+	property name="functionLineNums" inject="functionLineNums@funclinenums";
 
 	property name="levels" type="array";
 
@@ -148,6 +149,18 @@ component accessors=true singleton {
 		setUserInfoUDF( settings.userInfoUDF );
 
 		settings.appRoot = normalizeSlashes( settings.appRoot );
+
+		// in a non ColdBox context, ensure functionLineNums exists
+		// so this service can still be used if functionLineNums 
+		// is not passed in
+		if (isNull(variables.functionLineNums)) {
+			setFunctionLineNums({
+				findTagContextFunction: function() {
+					return '';
+				}
+			});
+		}
+
 	}
 
 	/**
@@ -453,39 +466,36 @@ component accessors=true singleton {
 			};
 
 			// The name of the function being called
-			if (i == 1) {
-				thisStackItem["function"] = "column #thisTCItem["COLUMN"]#";
-			} else {
-				thisStackItem["function"] = thisTCItem["ID"];
+			var functionName = functionLineNums.findTagContextFunction(thisTCItem);
+			if (len(functionName)) {
+				thisStackItem["function"] = functionName;
 			}
 
 			// for source code rendering
 			var fileLen = arrayLen( fileArray );
 			var errorLine = thisTCItem[ "LINE" ];
-			var pre_context = thisStackItem["pre_context"];
-			var post_context = thisStackItem["post_context"];
-			
+
 			if (errorLine-3 >= 1 && errorLine-3 <= fileLen ) {
-				pre_context[1] = fileArray[errorLine-3];
+				thisStackItem.pre_context[1] = fileArray[errorLine-3];
 			}
 			if (errorLine-2 >= 1 && errorLine-2 <= fileLen) {
-				pre_context[1] = fileArray[errorLine-2];
+				thisStackItem.pre_context[1] = fileArray[errorLine-2];
 			}
 			if (errorLine-1 >= 1 && errorLine-1 <= fileLen) {
-				pre_context[2] = fileArray[errorLine-1];
+				thisStackItem.pre_context[2] = fileArray[errorLine-1];
 			}
-			
+
 			if (errorLine <= fileLen) {
 				thisStackItem["context_line"] = fileArray[errorLine];
 			}
-			
+
 			if (fileLen >= errorLine+1) {
-				post_context[1] = fileArray[errorLine+1];
+				thisStackItem.post_context[1] = fileArray[errorLine+1];
 			}
 			if (fileLen >= errorLine+2) {
-				post_context[2] = fileArray[errorLine+2];
+				thisStackItem.post_context[2] = fileArray[errorLine+2];
 			}
-				
+
 			sentryException["sentry.interfaces.Stacktrace"]["frames"][stacki] = thisStackItem;
 		}
 		

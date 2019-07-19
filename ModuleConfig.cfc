@@ -17,6 +17,7 @@ component {
 	this.viewParentLookup 	= true;
 	// If true, looks for layouts in the parent first, if not found, then in module. Else vice-versa
 	this.layoutParentLookup = true;
+	this.dependencies = [ 'funclinenums' ];
 
 	// STATIC SCRUB FIELDS
 	variables.SCRUB_FIELDS 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ];
