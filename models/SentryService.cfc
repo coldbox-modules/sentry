@@ -598,7 +598,7 @@ component accessors=true singleton {
 			arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.script_name;
 
 		var thisSession = {};
-		if( GetApplicationSettings().SessionManagement ?: false ) {
+		if( GetApplicationMetadata().SessionManagement ?: false ) {
 			thisSession = session;
 		}
 
