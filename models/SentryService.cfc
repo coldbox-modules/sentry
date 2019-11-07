@@ -597,10 +597,15 @@ component accessors=true singleton {
 		if (!len(arguments.path))
 			arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.script_name;
 
+		var thisSession = {};
+		if( GetApplicationSettings().SessionManagement ?: false ) {
+			thisSession = session;
+		}
+
 		// HTTP interface
 		// https://docs.sentry.io/clientdev/interfaces/http/
 		arguments.captureStruct["sentry.interfaces.Http"] = {
-			"sessions" 		: session,
+			"sessions" 		: thisSession,
 			"url" 			: arguments.path,
 			"method" 		: arguments.cgiVars.request_method,
 			"data" 			: sanitizeFields( form ),
