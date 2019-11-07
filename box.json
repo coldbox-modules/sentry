@@ -1,7 +1,7 @@
 {
     "name":"Sentry",
     "author":"Ortus Solutions <info@ortussolutions.com>",
-    "version":"1.3.28",
+    "version":"1.3.29",
     "location":"https://downloads.ortussolutions.com/ortussolutions/coldbox-modules/sentry/@build.version@/sentry-@build.version@.zip",
     "slug":"sentry",
     "type":"modules",
