@@ -593,9 +593,15 @@ component accessors=true singleton {
 		arguments.captureStruct["sentry.interfaces.User"] = correctCasingUserInfo;
 
 		// Prepare path for HTTP Interface
-		arguments.path = trim(arguments.path);
-		if (!len(arguments.path))
-			arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.script_name;
+		arguments.path = trim( arguments.path );
+		if ( !len( arguments.path ) ) {
+			// leave off script name for SES URLs since rewrites were probably used
+			if( arguments.cgiVars.script_name == '/index.cfm' && len( arguments.cgiVars.path_info ) ) {
+				arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.path_info;	
+			} else {
+				arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.script_name & arguments.cgiVars.path_info;
+			}
+		}
 
 		var thisSession = {};
 		if( GetApplicationMetadata().SessionManagement ?: false ) {
