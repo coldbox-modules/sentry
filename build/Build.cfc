@@ -108,7 +108,7 @@ component{
         buildID=createUUID(),
         branch="development"
     ){
-        var fullVersion = version & ( arguments.branch == "master" ? '+' & arguments.buildID : "-snapshot" );
+        var fullVersion = version & ( arguments.branch == "master" ? '' : "-snapshot" );
         
         // Build Notice ID
         print.line()
@@ -168,7 +168,7 @@ component{
      * Produce the API Docs
      */
     function docs( required projectName, version="1.0.0", outputDir=".tmp/apidocs" ){
-        var fullVersion = version & ( arguments.branch == "master" ? '+' & arguments.buildID : "-snapshot" );
+        var fullVersion = version & ( arguments.branch == "master" ? '' : "-snapshot" );
 
         // Generate Docs
         print.greenLine( "Generating API Docs, please wait..." ).toConsole();
