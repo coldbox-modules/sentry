@@ -108,13 +108,15 @@ component{
         buildID=createUUID(),
         branch="development"
     ){
+        var fullVersion = version & ( arguments.branch == "master" ? '+' & arguments.buildID : "-snapshot" );
+        
         // Build Notice ID
         print.line()
             .boldMagentaLine( "Building #arguments.projectName# v#arguments.version#+#arguments.buildID# from #cwd# using the #arguments.branch# branch." )
             .toConsole();
 
         // Prepare exports directory
-        variables.exportsDir = variables.artifactsDir & "/#projectName#/#arguments.version#";
+        variables.exportsDir = variables.artifactsDir & "/#projectName#/#fullVersion#";
         directoryCreate( variables.exportsDir, true, true );
 
         // Project Build Dir
@@ -148,7 +150,7 @@ component{
             .run();
 
         // zip up source
-        var destination = "#variables.exportsDir#/#projectName#-#version#.zip";
+        var destination = "#variables.exportsDir#/#projectName#-#fullVersion#.zip";
         print.greenLine( "Zipping code to #destination#" ).toConsole();
         cfzip(
             action="zip",
@@ -166,6 +168,8 @@ component{
      * Produce the API Docs
      */
     function docs( required projectName, version="1.0.0", outputDir=".tmp/apidocs" ){
+        var fullVersion = version & ( arguments.branch == "master" ? '+' & arguments.buildID : "-snapshot" );
+
         // Generate Docs
         print.greenLine( "Generating API Docs, please wait..." ).toConsole();
         directoryCreate( arguments.outputDir, true, true );
@@ -181,7 +185,7 @@ component{
 
         print.greenLine( "API Docs produced at #arguments.outputDir#" ).toConsole();
 
-        var destination = "#variables.exportsDir#/#projectName#-docs-#version#.zip";
+        var destination = "#variables.exportsDir#/#projectName#-docs-#fullVersion#.zip";
         print.greenLine( "Zipping apidocs to #destination#" ).toConsole();
         cfzip(
             action="zip",
