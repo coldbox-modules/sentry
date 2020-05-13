@@ -173,7 +173,7 @@ component accessors=true singleton {
 	* https://docs.sentry.io/clientdev/overview/#parsing-the-dsn
 	*/
 	private void function parseDSN(required string DSN) {
-		var pattern = "^(?:(\w+):)?\/\/(\w+):(\w+)?@([\w\.\-:]+)\/(.*)";
+		var pattern = "^(?:(\w+):)?\/\/(\w+):?(\w+)?@([\w\.\-:]+)\/(.*)";
 		var result 	= reFind(pattern,arguments.DSN,1,true);
 		var segments = [];
 
