@@ -654,7 +654,7 @@ component accessors=true singleton {
 		// send to sentry via REST API Call
 		
 		cfhttp(
-			url 	: getSentryUrl() & "/api/store/",
+			url 	: getSentryUrl() & "/api/" & getProjectID() & "/store/",
 			method 	: "post",
 			timeout : "2",
 			result 	: "http"
