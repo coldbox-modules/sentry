@@ -45,6 +45,9 @@ component accessors=true singleton {
 	property name="userInfoUDF";
 	
 	property name="enabled";
+
+	// Additional tags 
+	property name="tags";
 	
 	
 
@@ -234,6 +237,8 @@ component accessors=true singleton {
 	* @useThread Option to send post to Sentry in its own thread
 	* @userInfo Optional Struct that gets passed to the Sentry User Interface
 	* @additionalData Additional metadata to store with the event - passed into the extra attribute
+	* @tags Optional. A struct of tags for this event. Each tag must be less than 200 characters.
+	* @fingerprint  Optional An array of strings used to dictate the deduplication of this event.
 	*/
 	public any function captureMessage(
 		required string message,
@@ -244,7 +249,9 @@ component accessors=true singleton {
 		boolean useThread = getAsync(),
 		struct userInfo = {},
 		string logger=getLogger(),
-		any additionalData
+		any additionalData,
+		struct tags = {},
+		array fingerprint = []
 	) {
 		if( !getEnabled() ) {
 			return;
@@ -267,6 +274,15 @@ component accessors=true singleton {
 
 		if(structKeyExists(arguments,"params")) {
 			sentryMessage["sentry.interfaces.Message"]["params"] = arguments.params;
+		}
+		// Add tags
+		if(!structIsEmpty(arguments.tags)) {
+			sentryMessage['tags'] = arguments.tags;
+		}
+
+		//Add fingerprint
+		if(!isEmpty(arguments.fingerprint)){
+			sentryMessage['fingerprint'] = arguments.fingerprint;
 		}
 
 
@@ -292,15 +308,17 @@ component accessors=true singleton {
 	* @exception The exception
 	* @level The level to log
 	* @path The path to the script currently executing
-	* @useThread Option to send post to Sentry in its own thread
-	* @userInfo Optional Struct that gets passed to the Sentry User Interface
-	* @showJavaStackTrace Passes Java Stack Trace as a string to the extra attribute
 	* @oneLineStackTrace Set to true to render only 1 tag context. This is not the Java Stack Trace this is simply for the code output in Sentry
+	* @showJavaStackTrace Passes Java Stack Trace as a string to the extra attribute
 	* @removeTabsOnJavaStackTrace Removes the tab on the child lines in the Stack Trace
 	* @additionalData Additional metadata to store with the event - passed into the extra attribute
 	* @cgiVars Parameters to send to Sentry, defaults to the CGI Scope
 	* @useThread Option to send post to Sentry in its own thread
-	* @userInfo Optional Struct that gets passed to the Sentry User Interface	*
+	* @userInfo Optional Struct that gets passed to the Sentry User Interface
+	* @message Optional message name to output
+	* @logger Optional logger to use
+	* @tags Optional. A struct of tags for this event. Each tag must be less than 200 characters.
+	* @fingerprint  Optional An array of strings used to dictate the deduplication of this event.
 	*/
 	public any function captureException(
 		required any exception,
@@ -314,7 +332,9 @@ component accessors=true singleton {
 		boolean useThread = getAsync(),
 		struct userInfo = {},
 		string message = '',
-		string logger=getLogger()
+		string logger=getLogger(),
+		struct tags = {},
+		array fingerprint = []
 	) {
 		if( !getEnabled() ) {
 			return;
@@ -347,7 +367,18 @@ component accessors=true singleton {
 			"level" 	: arguments.level,
 			"culprit" 	: arguments.exception.message
 		};
-		
+
+
+		// Add tags
+		if(!structIsEmpty(arguments.tags)) {
+			sentryException['tags'] = arguments.tags;
+		}
+
+		//Add fingerprint
+		if(!isEmpty(arguments.fingerprint)){
+			sentryException['fingerprint'] = arguments.fingerprint;
+		}
+
 		if( arguments.message != arguments.exception.message ) {
 			sentryException.message = arguments.message & " " & sentryException.message;  
 		}
@@ -622,10 +653,11 @@ component accessors=true singleton {
 							} ),
 			"env" 			: arguments.cgiVars,
 			"headers" 		: sanitizeHeaders( httpRequestData.headers )
+			
 		};
 		// serialize data
 		jsonCapture = serializeJSON(arguments.captureStruct);
-		
+
 		// prepare header
 		header = "Sentry sentry_version=#getSentryVersion()#, sentry_timestamp=#timeVars.time#, sentry_key=#getPublicKey()#, sentry_secret=#getPrivateKey()#, sentry_client=Sentry/#moduleConfig.version#";
 		// post message
