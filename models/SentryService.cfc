@@ -8,10 +8,12 @@
 component accessors=true singleton {
 	
 	// DI
-	property name="settings" inject="coldbox:moduleSettings:sentry";
-	property name="moduleConfig" inject="coldbox:moduleConfig:sentry";
-	property name="controller" inject="coldbox";
+	property name="wirebox" inject="wirebox";
 	property name="functionLineNums" inject="functionLineNums@funclinenums";
+	
+	property name="settings";
+	property name="moduleConfig";
+	property name="coldbox";
 
 	property name="levels" type="array";
 
@@ -92,7 +94,7 @@ component accessors=true singleton {
 			'serverName' = cgi.server_name,
 			'appRoot' = expandPath('/'),
 			'sentryVersion' = 7,
-			// This is not arbityrary but must be a specific value. Leave as "cfml"
+			// This is not arbitrary but must be a specific value. Leave as "cfml"
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
 			'platform' = 'cfml',
 			'logger' = 'sentry',
@@ -104,6 +106,21 @@ component accessors=true singleton {
 	 * onDIComplete
 	 */	
 	function onDIComplete() {
+		// If we have WireBox, see if we can get ColdBox
+		if( !isNull( wirebox ) ) {
+			// backwards compat with older versions of ColdBox 
+			if( wirebox.isColdBoxLinked() ) {
+				setSettings( wirebox.getInstance( dsl='coldbox:moduleSettings:sentry' ) );
+				setModuleConfig( wirebox.getInstance( dsl='coldbox:moduleConfig:sentry' ) );
+			// CommandBox supports generic box namespace
+			} else {
+				setSettings( wirebox.getInstance( dsl='box:moduleSettings:sentry' ) );
+				
+				setModuleConfig( wirebox.getInstance( dsl='box:moduleConfig:sentry' ) );
+			}
+			setColdBox( wirebox.getColdBox() );
+		}
+		
 		configure();
 	}
 
@@ -561,12 +578,12 @@ component accessors=true singleton {
 		if( isCustomFunction( userInfoUDF ) ) {
 			
 			// Check for a non-ColdBox context
-			if( isNull( controller ) ) {
+			if( isNull( coldbox ) ) {
 				// Call the custon closure to produce user info
 				local.tmpUserInfo = userInfoUDF();
 			} else {				
 				// Prepare the request context for the closure to use
-				var event = controller.getRequestService().getContext();
+				var event = coldbox.getRequestService().getContext();
 				// Call the custon closure to produce user info
 				local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection() );	
 			}
@@ -594,7 +611,7 @@ component accessors=true singleton {
 
 		// Prepare path for HTTP Interface
 		arguments.path = trim( arguments.path );
-		if ( !len( arguments.path ) ) {
+		if ( !len( arguments.path ) && structCount( arguments.cgiVars ) ) {
 			// leave off script name for SES URLs since rewrites were probably used
 			if( arguments.cgiVars.script_name == '/index.cfm' && len( arguments.cgiVars.path_info ) ) {
 				arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.path_info;	
@@ -613,9 +630,9 @@ component accessors=true singleton {
 		arguments.captureStruct["sentry.interfaces.Http"] = {
 			"sessions" 		: thisSession,
 			"url" 			: arguments.path,
-			"method" 		: arguments.cgiVars.request_method,
+			"method" 		: arguments.cgiVars.request_method ?: 'GET',
 			"data" 			: !structIsEmpty( form ) ? sanitizeFields( form ) : sanitizeFields( isJSON( getHTTPRequestData().content ) ? deserializeJSON( getHTTPRequestData().content ) : {} ),
-			"query_string" 	: sanitizeQueryString( arguments.cgiVars.query_string ),
+			"query_string" 	: sanitizeQueryString( arguments.cgiVars.query_string ?: '' ),
 							// Sentry requires all cookies be strings
 			"cookies" 		: cookie.map( function( k, v ) {
 								return toString( v );

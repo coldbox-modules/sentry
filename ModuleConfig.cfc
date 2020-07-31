@@ -43,7 +43,7 @@ component {
 		    'scrubFields' 	= [],
 		    'scrubHeaders' 	= [],
 		    'release' = '',
-			'environment' = controller.getSetting( 'environment' ),
+			'environment' = (!isNull( controller ) ? controller.getSetting( 'environment' ) : '' ),
 			'DSN' = '',
 			'publicKey' = '',
 			'privateKey' = '',
@@ -55,25 +55,27 @@ component {
 			// This is not arbityrary but must be a specific value. Leave as "cfml"
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
 			'platform' = 'cfml',
-			'logger' = controller.getSetting( 'appName' ),
+			'logger' = (!isNull( controller ) ? controller.getSetting( 'appName' ) : 'sentry' ),
 			'userInfoUDF' = ''
 		};
-				
-		// Try to look up the release based on a box.json
-		var boxJSONPath = expandPath( '/' & appmapping & '/box.json' );
-		if( fileExists( boxJSONPath ) ) {
-			var boxJSONRaw = fileRead( boxJSONPath );
-			if( isJSON( boxJSONRaw ) ) {
-				var boxJSON = deserializeJSON( boxJSONRaw );
-				if( boxJSON.keyExists( 'version' ) ) {
-					settings.release = boxJSON.version;
-					if( boxJSON.keyExists( 'slug' ) ) {
-						settings.release = boxJSON.slug & '@' & settings.release;
-					} else if( boxJSON.keyExists( 'name' ) ) {
-						settings.release = boxJSON.name & '@' & settings.release;
+		
+		// Try to look up the release based on a box.json		
+		if( !isNull( appmapping ) ) {
+			var boxJSONPath = expandPath( '/' & appmapping & '/box.json' );
+			if( fileExists( boxJSONPath ) ) {
+				var boxJSONRaw = fileRead( boxJSONPath );
+				if( isJSON( boxJSONRaw ) ) {
+					var boxJSON = deserializeJSON( boxJSONRaw );
+					if( boxJSON.keyExists( 'version' ) ) {
+						settings.release = boxJSON.version;
+						if( boxJSON.keyExists( 'slug' ) ) {
+							settings.release = boxJSON.slug & '@' & settings.release;
+						} else if( boxJSON.keyExists( 'name' ) ) {
+							settings.release = boxJSON.name & '@' & settings.release;
+						}
 					}
 				}
-			}
+			}	
 		}
 
 	}
@@ -106,13 +108,15 @@ component {
 		if( !settings.enableExceptionLogging ){
 			return;
 		}
-		var sentryService = wirebox.getInstance( 'SentryService@sentry' );
-		
-		sentryService.captureException(
-			exception	= interceptData.exception,
-			level 	= 'error' 
-		);
-			}
+		if( wirebox.containsInstance( 'SentryService@sentry' ) ) {
+			var sentryService = wirebox.getInstance( 'SentryService@sentry' );
+			
+			sentryService.captureException(
+				exception	= interceptData.exception,
+				level 	= 'error' 
+			);	
+		}
+	}
 
 	//**************************************** PRIVATE ************************************************//	
 
@@ -121,7 +125,7 @@ component {
 	 */
 	private function loadAppenders(){
 		// Get config
-		var logBoxConfig 	= controller.getLogBox().getConfig();
+		var logBoxConfig 	= logBox.getConfig();
 		var rootConfig 		= '';
 
 		// Register tracer appender
@@ -139,7 +143,7 @@ component {
 		);
 
 		// Store back config
-		controller.getLogBox().configure( logBoxConfig );
+		logBox.configure( logBoxConfig );
 	}
 
 }
