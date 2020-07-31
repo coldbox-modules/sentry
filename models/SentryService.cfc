@@ -336,6 +336,13 @@ component accessors=true singleton {
 		if( !getEnabled() ) {
 			return;
 		}
+		
+		// Ensure expected keys exist
+		arguments.exception.StackTrace = arguments.exception.StackTrace ?: '';
+		arguments.exception.type = arguments.exception.type ?: '';
+		arguments.exception.detail = arguments.exception.detail ?: '';
+		arguments.exception.TagContext = arguments.exception.TagContext ?: [];
+		
 		var sentryException 		= {
 			"logger" = arguments.logger
 		};
@@ -344,7 +351,7 @@ component accessors=true singleton {
 		var file 					= "";
 		var fileArray 				= "";
 		var currentTemplate 		= "";
-		var tagContext 				= arguments.exception.TagContext  ?: [];
+		var tagContext 				= arguments.exception.TagContext;
 		var i 						= 1;
 		var st 						= "";
 
