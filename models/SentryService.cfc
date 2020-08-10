@@ -293,12 +293,12 @@ component accessors=true singleton {
 			sentryMessage["sentry.interfaces.Message"]["params"] = arguments.params;
 		}
 		// Add tags
-		if(!structIsEmpty(arguments.tags)) {
+		if( !structIsEmpty( arguments.tags ) ) {
 			sentryMessage['tags'] = arguments.tags;
 		}
 
 		//Add fingerprint
-		if(!isEmpty(arguments.fingerprint)){
+		if( arrayLen( arguments.fingerprint ) ){
 			sentryMessage['fingerprint'] = arguments.fingerprint;
 		}
 
@@ -399,7 +399,7 @@ component accessors=true singleton {
 		}
 
 		//Add fingerprint
-		if(!isEmpty(arguments.fingerprint)){
+		if( arrayLen( arguments.fingerprint ) ){
 			sentryException['fingerprint'] = arguments.fingerprint;
 		}
 
