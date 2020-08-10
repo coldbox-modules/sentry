@@ -659,7 +659,7 @@ component accessors=true singleton {
 		}
 
 		var thisSession = {};
-		if( GetApplicationMetadata().SessionManagement ?: false ) {
+		if( ( GetApplicationMetadata().SessionManagement ?: false ) && !isNull( session ) ) {
 			thisSession = session;
 		}
 
