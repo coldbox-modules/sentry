@@ -362,12 +362,8 @@ component accessors=true singleton {
 		arguments.exception.type = arguments.exception.type ?: '';
 		arguments.exception.detail = arguments.exception.detail ?: '';
 		arguments.exception.TagContext = arguments.exception.TagContext ?: [];
-		
-		var sentryException 		= {
-			"logger" = arguments.logger
-		};
-		
-		var sentryExceptionExtra 	= {};
+				
+		var sentryexceptionExtra 	= {};
 		var file 					= "";
 		var fileArray 				= "";
 		var currentTemplate 		= "";
@@ -386,10 +382,11 @@ component accessors=true singleton {
 		* CORE AND OPTIONAL ATTRIBUTES
 		* https://docs.sentry.io/clientdev/attributes/
 		*/
-		sentryException = {
+		var sentryException = {
 			"message" 	: arguments.exception.message & " " & arguments.exception.detail,
 			"level" 	: arguments.level,
-			"culprit" 	: arguments.exception.message
+			"culprit" 	: arguments.exception.message,
+			"logger" 	: arguments.logger
 		};
 
 
