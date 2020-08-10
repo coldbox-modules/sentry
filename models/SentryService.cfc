@@ -399,7 +399,7 @@ component accessors=true singleton {
 		}
 
 		//Add fingerprint
-		if(!isEmpty(arguments.fingerprint)){
+		if( arrayLen( arguments.fingerprint ) ){
 			sentryException['fingerprint'] = arguments.fingerprint;
 		}
 
