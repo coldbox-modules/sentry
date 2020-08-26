@@ -788,9 +788,12 @@ component accessors=true singleton {
 
 	/**
 	 * Sanitize fields
-	 * @data The data fields struct
+	 * @data The data fields
 	 */
-	private struct function sanitizeFields( required struct data ){
+	private any function sanitizeFields( required any data ){
+		if ( !isStruct( arguments.data ) ) {
+			return arguments.data;
+		}
 		if( structCount( arguments.data ) ){
 			for( var thisField in variables.settings.scrubFields ){
 				// If header found, then sanitize it.
