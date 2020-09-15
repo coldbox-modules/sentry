@@ -56,7 +56,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 				
 		} else if( 
 			( isStruct( extraInfo ) || isObject( extraInfo ) )
-            && isStruct( extraInfo.exception ) && extraInfo.exception.keyExists( "StackTrace" ) 
+			&& extraInfo.keyExists( "exception" ) && isStruct( extraInfo.exception ) && extraInfo.exception.keyExists( "StackTrace" ) 
 		){
 			
 			var trimmedExtra = structCopy( extraInfo );
