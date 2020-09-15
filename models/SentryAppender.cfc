@@ -44,7 +44,7 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 		// Is this an exception or not?
 		if( 
 			( isStruct( extraInfo ) || isObject( extraInfo ) )
-            && extraInfo.keyExists( "message" ) && extraInfo.keyExists( "detail" ) 
+            && extraInfo.keyExists( "StackTrace" ) && extraInfo.keyExists( "message" ) && extraInfo.keyExists( "detail" ) 
 		){
 			
 			getProperty( 'sentryService' ).captureException(
