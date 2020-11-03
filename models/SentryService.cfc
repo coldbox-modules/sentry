@@ -85,7 +85,7 @@ component accessors=true singleton {
 			// Enable/disable error logging
 			'enableExceptionLogging' = true,
 			// Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
-			'scrubFields' 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
+			'scrubFields' 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit', 'cfid', 'cftoken', 'jsessionid' ],
 			'scrubHeaders' 	= [ 'x-api-token', 'Authorization' ],
 			'release' = '',
 			'environment' = 'production',
@@ -669,9 +669,9 @@ component accessors=true singleton {
 			"data" 			: !structIsEmpty( form ) ? sanitizeFields( form ) : sanitizeFields( isJSON( getHTTPRequestData().content ) ? deserializeJSON( getHTTPRequestData().content ) : {} ),
 			"query_string" 	: sanitizeQueryString( arguments.cgiVars.query_string ?: '' ),
 							// Sentry requires all cookies be strings
-			"cookies" 		: cookie.map( function( k, v ) {
+			"cookies" 		: sanitizeFields( cookie.map( function( k, v ) {
 								return toString( v );
-							} ),
+							} ) ),
 			"env" 			: arguments.cgiVars,
 			"headers" 		: sanitizeHeaders( httpRequestData.headers )
 			
