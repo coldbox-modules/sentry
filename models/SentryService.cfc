@@ -669,9 +669,9 @@ component accessors=true singleton {
 			"data" 			: !structIsEmpty( form ) ? sanitizeFields( form ) : sanitizeFields( isJSON( getHTTPRequestData().content ) ? deserializeJSON( getHTTPRequestData().content ) : {} ),
 			"query_string" 	: sanitizeQueryString( arguments.cgiVars.query_string ?: '' ),
 							// Sentry requires all cookies be strings
-			"cookies" 		: cookie.map( function( k, v ) {
+			"cookies" 		: sanitizeFields( cookie.map( function( k, v ) {
 								return toString( v );
-							} ),
+							} ) ),
 			"env" 			: arguments.cgiVars,
 			"headers" 		: sanitizeHeaders( httpRequestData.headers )
 			
