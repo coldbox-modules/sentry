@@ -85,7 +85,7 @@ component accessors=true singleton {
 			// Enable/disable error logging
 			'enableExceptionLogging' = true,
 			// Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
-			'scrubFields' 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit', 'cfid', 'cftoken', 'jsessionid' ],
+			'scrubFields' 	= [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
 			'scrubHeaders' 	= [ 'x-api-token', 'Authorization' ],
 			'release' = '',
 			'environment' = 'production',
