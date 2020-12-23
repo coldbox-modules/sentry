@@ -466,7 +466,7 @@ component accessors=true singleton {
 		
 		// Applies to type = "application" and "custom". Custom error message; information that the default exception handler does not display.
 		if( structKeyExists( arguments.exception, 'ExtendedInfo' ) && len( arguments.exception.ExtendedInfo ) ) {
-			sentryExceptionExtra[ "application" ][ "Extended Info" ] = arguments.exception.ExtendedInfo;
+			sentryExceptionExtra[ "application" ][ "Extended Info" ] = isJSON( arguments.exception.ExtendedInfo ) ? deserializeJSON( arguments.exception.ExtendedInfo ) : arguments.exception.ExtendedInfo;
 		}
 		
 		if (structCount(sentryExceptionExtra))
