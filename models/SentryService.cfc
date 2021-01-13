@@ -101,7 +101,8 @@ component accessors=true singleton {
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
 			'platform' = 'cfml',
 			'logger' = 'sentry',
-			'userInfoUDF' = ''
+			'userInfoUDF' = '',
+			'showJavaStackTrace' = false
 		};
 	}
 
@@ -342,7 +343,7 @@ component accessors=true singleton {
 		string level = "error",
 		string path = "",
 		boolean oneLineStackTrace = false,
-		boolean showJavaStackTrace = false,
+		boolean showJavaStackTrace = settings.showJavaStackTrace,
 		boolean removeTabsOnJavaStackTrace = false,
 		any additionalData,
 		any cgiVars = cgi,
