@@ -52,14 +52,14 @@ component {
 			'serverName' = cgi.server_name,
 			'appRoot' = expandPath('/'),
 			'sentryVersion' = 7,
-			// This is not arbityrary but must be a specific value. Leave as "cfml"
+			// This is not arbitrary but must be a specific value. Leave as "cfml"
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
 			'platform' = 'cfml',
 			'logger' = (!isNull( controller ) ? controller.getSetting( 'appName' ) : 'sentry' ),
 			'userInfoUDF' = ''
 		};
 		
-		// Try to look up the release based on a box.json		
+		// Try to look up the release based on a box.json
 		if( !isNull( appmapping ) ) {
 			var boxJSONPath = expandPath( '/' & appmapping & '/box.json' );
 			if( fileExists( boxJSONPath ) ) {
