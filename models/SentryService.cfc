@@ -814,7 +814,7 @@ component accessors=true singleton {
 		var aTarget = listToArray( target, "&" )
 			.map( function( item, index, array ){
 				var key 	= listFirst( arguments.item, "=" );
-				var value 	= listLast( arguments.item, "=" );
+				var value 	= listLen( arguments.item, "=" GT 1 ) ? listLast( arguments.item, "=" ) : "";
 
 				// Sanitize?
 				if( arrayContainsNoCase( variables.settings.scrubFields, key ) ){
