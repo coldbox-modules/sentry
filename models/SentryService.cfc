@@ -764,7 +764,7 @@ component accessors=true singleton {
 			return trim( listFirst( headers[ 'X-Forwarded-For' ] ) );
 		}
 
-		return len( cgi.remote_addr ) ? trim( listLast( cgi.remote_addr ) ) : '127.0.0.1';
+		return len( cgi.remote_addr ) ? trim( listFirst( cgi.remote_addr ) ) : '127.0.0.1';
 	}
 	
 
