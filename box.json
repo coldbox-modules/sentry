@@ -30,7 +30,7 @@
     "ignore":[
         "**/.*",
         "test-harness",
-        "*/.md"
+        "*.md"
     ],
     "scripts":{
         "toMaster":"recipe build/toMaster.boxr"
