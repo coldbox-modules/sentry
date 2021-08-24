@@ -45,6 +45,8 @@ component accessors=true singleton {
 	property name="async" type="boolean";
 	/** A UDF that generates user information for logged messages. Returns a struct containing keys "id", "email", "username", and anything else. */
 	property name="userInfoUDF";
+	/** A dictionary of UDFs to add to the `extra` information. Each function is called and put in the `extra` struct under the provided key. */
+	property name="extraInfoUDFs";
 	
 	property name="enabled";
 
@@ -102,6 +104,7 @@ component accessors=true singleton {
 			'platform' = 'cfml',
 			'logger' = 'sentry',
 			'userInfoUDF' = '',
+			'extraInfoUdfs' = {},
 			'showJavaStackTrace' = false
 		};
 	}
@@ -131,7 +134,6 @@ component accessors=true singleton {
 	function configure() {
 		
 		setEnabled( true );
-		
 		// Add in default settings
 		settings.append(
 			getDefaultSettings(),
@@ -168,6 +170,7 @@ component accessors=true singleton {
 		setPlatform( settings.platform );
 		
 		setUserInfoUDF( settings.userInfoUDF );
+		setExtraInfoUDFs( settings.extraInfoUDFs );
 
 		settings.appRoot = normalizeSlashes( settings.appRoot );
 
@@ -307,7 +310,7 @@ component accessors=true singleton {
 		if ( !isNull(additionalData) ) {
 			if( !isStruct( additionalData ) ) {
 				additionalData = {
-					additionalData : additionalData
+					"Additional Data" : additionalData
 				};
 			}
 			sentryMessage["extra"] = additionalData;
@@ -412,8 +415,10 @@ component accessors=true singleton {
 			sentryExceptionExtra["Java StackTrace"] = listToArray(st,chr(10));
 		}
 
-		if (!isNull(arguments.additionalData))
+		if (!isNull(arguments.additionalData)) {
+
 			sentryExceptionExtra["Additional Data"] = arguments.additionalData;
+		}
 
 		// Applies to type = "database". Native error code associated with exception. Database drivers typically provide error codes to diagnose failing database operations. Default value is -1.
 		if( structKeyExists( arguments.exception, 'NativeErrorCode' ) ) {
@@ -645,6 +650,12 @@ component accessors=true singleton {
 				
 		arguments.captureStruct["sentry.interfaces.User"] = correctCasingUserInfo;
 
+		var extraInfoUdfs = getExtraInfoUdfs();
+		for ( var key in extraInfoUdfs ) {
+			var extraInfoUdf = extraInfoUdfs[ key ];
+			arguments.captureStruct[ "extra" ][ key ] = extraInfoUdf();
+		}
+
 		// Prepare path for HTTP Interface
 		arguments.path = trim( arguments.path );
 		if ( !len( arguments.path ) && structCount( arguments.cgiVars ) ) {
@@ -695,6 +706,11 @@ component accessors=true singleton {
 		} else {
 			post(header,jsonCapture);
 		}
+	}
+
+	public SentryService function addExtraInfoUdf( required string key, required function udf ) {
+		variables.extraInfoUDFs[ arguments.key ] = arguments.udf;
+		return this;
 	}
 
 	/**
