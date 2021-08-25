@@ -1,5 +1,5 @@
 {
-    "name":"rollbar-adobe@11",
+    "name":"sentry-adobe@11",
     "app":{
         "serverHomeDirectory":".engine/adobe11",
         "cfengine":"adobe@11"

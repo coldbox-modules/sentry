@@ -1,5 +1,5 @@
 {
-    "name":"rollbar-lucee@5",
+    "name":"sentry-lucee@5",
     "app":{
         "serverHomeDirectory":".engine/lucee5",
         "cfengine":"lucee@5"

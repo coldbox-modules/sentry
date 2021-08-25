@@ -88,6 +88,25 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 				}).toThrow( 'ThrownFromMain' );
 			});
 
+			it( 'can log a message with extra info automatically added', function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				service.addExtraInfoUdf( "queries", function() {
+					return [ "foo", "bar" ];
+				} );
+				service.addExtraInfoUdf( "qb", function() {
+					return [ "foo", "bar" ];
+				} );
+				service.captureMessage( 'This is a test message' );
+				var extra = deserializeJSON( service.$callLog( "post" ).post[1][2] ).extra;
+				expect( extra ).toHaveKey( 'queries' );
+				expect( extra ).toHaveKey( 'qb' );
+				expect( extra.queries ).toBe( [ "foo", "bar" ] );
+				expect( extra.qb ).toBe( [ "foo", "bar" ] );
+			});
+
 		});
 	}
 
