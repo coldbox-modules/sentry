@@ -56,7 +56,8 @@ component {
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
 			'platform' = 'cfml',
 			'logger' = (!isNull( controller ) ? controller.getSetting( 'appName' ) : 'sentry' ),
-			'userInfoUDF' = ''
+			'userInfoUDF' = '',
+			'extraInfoUDFs' = {}
 		};
 		
 		// Try to look up the release based on a box.json
