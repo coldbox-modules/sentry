@@ -6,11 +6,11 @@
 * Connector to Sentry
 */
 component accessors=true singleton {
-	
+
 	// DI
 	property name="wirebox" inject="wirebox";
 	property name="functionLineNums" inject="functionLineNums@funclinenums";
-	
+
 	property name="settings";
 	property name="moduleConfig";
 	property name="coldbox";
@@ -27,14 +27,14 @@ component accessors=true singleton {
 	property name="release" type="string";
 	/** A DSN string to connect to Sentry's API, the values can also be passed as individual arguments */
 	property name="DSN" type="string";
-	
+
 	/** The ID Sentry Project */
 	property name="projectID";
 	/** The Public Key for your Sentry Account */
 	property name="publicKey";
 	/** The Private Key for your Sentry Account */
 	property name="privateKey";
-	
+
 	/**  The Sentry API url which defaults to https://sentry.io */
 	property name="sentryUrl" type="string";
 	/**  The Sentry version */
@@ -47,13 +47,13 @@ component accessors=true singleton {
 	property name="userInfoUDF";
 	/** A dictionary of UDFs to add to the `extra` information. Each function is called and put in the `extra` struct under the provided key. */
 	property name="extraInfoUDFs";
-	
+
 	property name="enabled";
 
-	// Additional tags 
+	// Additional tags
 	property name="tags";
-	
-	
+
+
 
 	/**
 	 * Constructor
@@ -68,12 +68,12 @@ component accessors=true singleton {
 		setModuleConfig( {
 			version : '1.0.0'
 		} );
-		
+
 		return this;
 	}
 
 	private function getDefaultSettings() {
-		
+
 		// These are a duplicate of what's in the ModuleConfig.  I don't like
 		// having the here as well, but this is so this service can be used outside
 		// of ColdBox and not require the ModuleConfig.cfc
@@ -111,39 +111,39 @@ component accessors=true singleton {
 
 	/**
 	 * onDIComplete
-	 */	
+	 */
 	function onDIComplete() {
 		// If we have WireBox, see if we can get ColdBox
 		if( !isNull( wirebox ) ) {
-			// backwards compat with older versions of ColdBox 
+			// backwards compat with older versions of ColdBox
 			if( wirebox.isColdBoxLinked() ) {
 				setSettings( wirebox.getInstance( dsl='coldbox:moduleSettings:sentry' ) );
 				setModuleConfig( wirebox.getInstance( dsl='coldbox:moduleConfig:sentry' ) );
 			// CommandBox supports generic box namespace
 			} else {
 				setSettings( wirebox.getInstance( dsl='box:moduleSettings:sentry' ) );
-				
+
 				setModuleConfig( wirebox.getInstance( dsl='box:moduleConfig:sentry' ) );
 			}
 			setColdBox( wirebox.getColdBox() );
 		}
-		
+
 		configure();
 	}
 
 	function configure() {
-		
+
 		setEnabled( true );
 		// Add in default settings
 		settings.append(
 			getDefaultSettings(),
 			false
 		);
-		
+
 		if ( len( settings.sentryUrl ) ) {
 			setSentryUrl( settings.sentryUrl );
 		}
-		
+
 		if( len( settings.DSN ) ) {
 			setDSN( settings.DSN );
 			parseDSN( settings.DSN );
@@ -158,9 +158,9 @@ component accessors=true singleton {
 			setEnabled( false );
 			writeDump( var="You must configure in a valid DSN or Project Keys and ID to instantiate the Sentry CFML Client.", output='console' );
 		}
-		
+
 		setLevels(["fatal","error","warning","info","debug"]);
-		
+
 		setRelease( settings.release );
 		setEnvironment( settings.environment );
 		setServerName( settings.serverName );
@@ -168,14 +168,14 @@ component accessors=true singleton {
 		setSentryVersion( settings.sentryVersion );
 		setLogger( settings.logger );
 		setPlatform( settings.platform );
-		
+
 		setUserInfoUDF( settings.userInfoUDF );
 		setExtraInfoUDFs( settings.extraInfoUDFs );
 
 		settings.appRoot = normalizeSlashes( settings.appRoot );
 
 		// in a non ColdBox context, ensure functionLineNums exists
-		// so this service can still be used if functionLineNums 
+		// so this service can still be used if functionLineNums
 		// is not passed in
 		if (isNull(variables.functionLineNums)) {
 			setFunctionLineNums({
@@ -189,11 +189,11 @@ component accessors=true singleton {
 
 	/**
 	* Parses a valid Sentry DSN
-	* 
+	*
 	* {PROTOCOL}://{PUBLIC_KEY}:{SECRET_KEY}@{HOST}/{PATH}{PROJECT_ID}
 	* or
 	* {PROTOCOL}://{PUBLIC_KEY}@{HOST}/{PATH}{PROJECT_ID}
-	* 
+	*
 	* https://docs.sentry.io/clientdev/overview/#parsing-the-dsn
 	*/
 	private void function parseDSN(required string DSN) {
@@ -207,23 +207,23 @@ component accessors=true singleton {
 				segments.append(mid(arguments.DSN, result.pos[i], result.len[i]));
 			}
 		}
-		
+
 		if ( segments.len() == 4 ){
-			
+
 			setSentryUrl(segments[1] & "://" & segments[3]);
 			setPublicKey(segments[2]);
 			setProjectID(segments[4]);
-			
+
 		} else if ( segments.len() == 5 ){
-			
+
 			setSentryUrl(segments[1] & "://" & segments[4]);
 			setPublicKey(segments[2]);
 			setPrivateKey(segments[3]);
 			setProjectID(segments[5]);
-			
+
 		} else {
-			throw(message="Error parsing Sentry DSN");			
-		} 
+			throw(message="Error parsing Sentry DSN");
+		}
 
 
 	}
@@ -235,11 +235,11 @@ component accessors=true singleton {
 	* if you pass "warn", we'll switch it to "warning"
 	*/
 	private string function validateLevel(required string level) {
-		
+
 		if( arguments.level == 'warn' ) {
 			arguments.level = 'warning';
 		}
-		
+
 		if( !getLevels().findNoCase( arguments.level ) ) {
 			throw( message="Error Type [#arguments.level#] is invalid. Must be one of the following : " & getLevels().toString() );
 		}
@@ -360,13 +360,14 @@ component accessors=true singleton {
 		if( !getEnabled() ) {
 			return;
 		}
-		
+
 		// Ensure expected keys exist
 		arguments.exception.StackTrace = arguments.exception.StackTrace ?: '';
 		arguments.exception.type = arguments.exception.type ?: '';
 		arguments.exception.detail = arguments.exception.detail ?: '';
 		arguments.exception.TagContext = arguments.exception.TagContext ?: [];
-				
+		arguments.exception.message = arguments.exception.message ?: '';
+
 		var sentryexceptionExtra 	= {};
 		var file 					= "";
 		var fileArray 				= "";
@@ -405,7 +406,7 @@ component accessors=true singleton {
 		}
 
 		if( arguments.message != arguments.exception.message ) {
-			sentryException.message = arguments.message & " " & sentryException.message;  
+			sentryException.message = arguments.message & " " & sentryException.message;
 		}
 
 		if (arguments.showJavaStackTrace){
@@ -424,57 +425,57 @@ component accessors=true singleton {
 		if( structKeyExists( arguments.exception, 'NativeErrorCode' ) ) {
 			sentryExceptionExtra[ "DataBase" ][ "NativeErrorCode" ] = arguments.exception.NativeErrorCode;
 		}
-		
+
 		// Applies to type = "database". SQLState associated with exception. Database drivers typically provide error codes to help diagnose failing database operations. Default value is 1.
 		if( structKeyExists( arguments.exception, 'SQLState' ) ) {
 			sentryExceptionExtra[ "DataBase" ][ "SQL State" ] = arguments.exception.SQLState;
 		}
-		
+
 		// Applies to type = "database". The SQL statement sent to the data source.
 		if( structKeyExists( arguments.exception, 'Sql' ) ) {
 			sentryExceptionExtra[ "DataBase" ][ "SQL" ] = arguments.exception.Sql;
 		}
-		
+
 		// Applies to type ="database". The error message as reported by the database driver.
 		if( structKeyExists( arguments.exception, 'queryError' ) ) {
 			sentryExceptionExtra[ "DataBase" ][ "Query Error" ] = arguments.exception.queryError;
 		}
-		
+
 		// Applies to type= "database". If the query uses the cfqueryparam tag, query parameter name-value pairs.
 		if( structKeyExists( arguments.exception, 'where' ) ) {
 			sentryExceptionExtra[ "DataBase" ][ "Where" ] = arguments.exception.where;
 		}
-		
+
 		// Applies to type = "expression". Internal expression error number.
 		if( structKeyExists( arguments.exception, 'ErrNumber' ) ) {
 			sentryExceptionExtra[ "expression" ][ "Error Number" ] = arguments.exception.ErrNumber;
 		}
-		
+
 		// Applies to type = "missingInclude". Name of file that could not be included.
 		if( structKeyExists( arguments.exception, 'MissingFileName' ) ) {
 			sentryExceptionExtra[ "missingInclude" ][ "Missing File Name" ] = arguments.exception.MissingFileName;
 		}
-		
+
 		// Applies to type = "lock". Name of affected lock (if the lock is unnamed, the value is "anonymous").
 		if( structKeyExists( arguments.exception, 'LockName' ) ) {
 			sentryExceptionExtra[ "lock" ][ "Lock Name" ] = arguments.exception.LockName;
 		}
-		
+
 		// Applies to type = "lock". Operation that failed (Timeout, Create Mutex, or Unknown).
 		if( structKeyExists( arguments.exception, 'LockOperation' ) ) {
 			sentryExceptionExtra[ "lock" ][ "Lock Operation" ] = arguments.exception.LockOperation;
 		}
-		
+
 		// Applies to type = "custom". String error code.
 		if( structKeyExists( arguments.exception, 'ErrorCode' ) && len( arguments.exception.ErrorCode ) && arguments.exception.ErrorCode != '0' ) {
 			sentryExceptionExtra[ "custom" ][ "Error Code" ] = arguments.exception.ErrorCode;
 		}
-		
+
 		// Applies to type = "application" and "custom". Custom error message; information that the default exception handler does not display.
 		if( structKeyExists( arguments.exception, 'ExtendedInfo' ) && len( arguments.exception.ExtendedInfo ) ) {
 			sentryExceptionExtra[ "application" ][ "Extended Info" ] = isJSON( arguments.exception.ExtendedInfo ) ? deserializeJSON( arguments.exception.ExtendedInfo ) : arguments.exception.ExtendedInfo;
 		}
-		
+
 		if (structCount(sentryExceptionExtra))
 			sentryException["extra"] = sentryExceptionExtra;
 
@@ -497,7 +498,7 @@ component accessors=true singleton {
 		sentryException["sentry.interfaces.Stacktrace"] = {
 			"frames" : []
 		};
-		
+
 		var stacki = 0;
 		for (i=arrayLen(tagContext); i > 0; i--) {
 			stacki++;
@@ -556,7 +557,7 @@ component accessors=true singleton {
 
 			sentryException["sentry.interfaces.Stacktrace"]["frames"][stacki] = thisStackItem;
 		}
-		
+
 		capture(
 			captureStruct 	: sentryException,
 			path 			: arguments.path,
@@ -613,31 +614,31 @@ component accessors=true singleton {
 		var thisUserInfo = {
 			'ip_address' = getRealIP()
 		};
-		
+
 		var userInfoUDF = getUserInfoUDF();
 		// If there is a closure to produce user info, call it
 		if( isCustomFunction( userInfoUDF ) ) {
-			
+
 			// Check for a non-ColdBox context
 			if( isNull( coldbox ) ) {
 				// Call the custon closure to produce user info
 				local.tmpUserInfo = userInfoUDF();
-			} else {				
+			} else {
 				// Prepare the request context for the closure to use
 				var event = coldbox.getRequestService().getContext();
 				// Call the custon closure to produce user info
-				local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection() );	
+				local.tmpUserInfo = userInfoUDF( event, event.getCollection(), event.getPrivateCollection() );
 			}
-			
+
 			if( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
 				thisUserInfo.append( local.tmpUserInfo );
 			}
-			
+
 		}
 		if ( !arguments.userInfo.isEmpty() ) {
 			thisUserInfo.append( arguments.userInfo );
 		}
-		
+
 		// Force lowercasing on these since Sentry looks for them
 		// Stupid CF won't udpate key casing in-place, so creating a new struct.
 		var correctCasingUserInfo = {};
@@ -647,7 +648,7 @@ component accessors=true singleton {
 			}
 			correctCasingUserInfo[ key ] = thisUserInfo[ key ];
 		}
-				
+
 		arguments.captureStruct["sentry.interfaces.User"] = correctCasingUserInfo;
 
 		var extraInfoUdfs = getExtraInfoUdfs();
@@ -661,7 +662,7 @@ component accessors=true singleton {
 		if ( !len( arguments.path ) && structCount( arguments.cgiVars ) ) {
 			// leave off script name for SES URLs since rewrites were probably used
 			if( arguments.cgiVars.script_name == '/index.cfm' && len( arguments.cgiVars.path_info ) ) {
-				arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.path_info;	
+				arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.path_info;
 			} else {
 				arguments.path = "http" & (arguments.cgiVars.server_port_secure ? "s" : "") & "://" & arguments.cgiVars.server_name & arguments.cgiVars.script_name & arguments.cgiVars.path_info;
 			}
@@ -686,7 +687,7 @@ component accessors=true singleton {
 							} ) ),
 			"env" 			: arguments.cgiVars,
 			"headers" 		: sanitizeHeaders( httpRequestData.headers )
-			
+
 		};
 		// serialize data
 		jsonCapture = serializeJSON(arguments.captureStruct);
@@ -722,7 +723,7 @@ component accessors=true singleton {
 	) {
 		var http = {};
 		// send to sentry via REST API Call
-		
+
 		cfhttp(
 			url 	: getSentryUrl() & "/api/" & getProjectID() & "/store/",
 			method 	: "post",
@@ -732,9 +733,9 @@ component accessors=true singleton {
 			cfhttpparam(type="header",name="X-Sentry-Auth",value=arguments.header);
 			cfhttpparam(type="body",value=arguments.json);
 		}
-						
+
 		if( find( "400", http.statuscode ) || find( "500", http.statuscode ) ){
-			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );	 
+			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
 		// TODO : Honor Sentry’s HTTP 429 Retry-After header any other errors
 		} else if (!find("200",http.statuscode)){
 			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
@@ -752,7 +753,7 @@ component accessors=true singleton {
 		};
 		return timeVars;
 	}
-	
+
 	/**
 	 * Get the host name you are on
 	 */
@@ -772,7 +773,7 @@ component accessors=true singleton {
 		var headers = GetHttpRequestData().headers;
 
 		// When going through a proxy, the IP can be a delimtied list, thus we take the last one in the list
-		
+
 		if( structKeyExists( headers, 'x-cluster-client-ip' ) ){
 			return trim( listLast( headers[ 'x-cluster-client-ip' ] ) );
 		}
@@ -782,7 +783,7 @@ component accessors=true singleton {
 
 		return len( cgi.remote_addr ) ? trim( listFirst( cgi.remote_addr ) ) : '127.0.0.1';
 	}
-	
+
 
 	/**
 	 * Sanitize the incoming http headers in the request data struct
@@ -840,7 +841,7 @@ component accessors=true singleton {
 				return "#key#=#value#";
 		} );
 		return arrayToList( aTarget, "&" );
-	}	
+	}
 
 	/**
 	 * Turns all slashes in a path to forward slashes except for \\ in a Windows UNC network share
@@ -851,8 +852,8 @@ component accessors=true singleton {
 		var normalizedPath = arguments.path.replace( "\", "/", "all" );
 		if( arguments.path.left( 2 ) == "\\" ) {
 			normalizedPath = "\\" & normalizedPath.mid( 3, normalizedPath.len() - 2 );
-		} 
-		return normalizedPath.replace( "//", "/", "all" );	
+		}
+		return normalizedPath.replace( "//", "/", "all" );
 	}
 
 }
