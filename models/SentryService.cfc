@@ -567,6 +567,27 @@ component accessors=true singleton {
 		);
 	}
 
+	// recursivley replace any CFC instances with structs
+	function structifyObject(o, name="") {
+		var result = {};
+		if( len( name ) ) {
+			// Find a way to communicate what the original CFC instance was, even though it's a struct now
+			result['__componentName'] = name;
+		}
+		return structReduce( o, function( acc, k, v ) {
+			if( !isCustomFunction(v) ) {
+				if( isObject( v ) ) {
+					acc[ k ] = structifyObject( v, getMetadata(v).name );
+				} else if( isStruct( v ) ) {
+					acc[ k ] = structifyObject( v );
+				} else {
+					acc[ k ] =  v;
+				}
+			}
+			return acc;
+		}, result );
+	}
+
 	/**
 	* Prepare message to post to Sentry
 	*
@@ -670,7 +691,8 @@ component accessors=true singleton {
 
 		var thisSession = {};
 		if( ( GetApplicationMetadata().SessionManagement ?: false ) && !isNull( session ) ) {
-			thisSession = session;
+			// Sanitize CFC instances from session scope,  Mostly to work around this stupid Lucee bug: https://luceeserver.atlassian.net/browse/LDEV-4676
+			thisSession = structifyObject( session );
 		}
 
 		// HTTP interface
