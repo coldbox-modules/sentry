@@ -105,7 +105,8 @@ component accessors=true singleton {
 			'logger' = 'sentry',
 			'userInfoUDF' = '',
 			'extraInfoUdfs' = {},
-			'showJavaStackTrace' = false
+			'showJavaStackTrace' = false,
+			'throwOnPostError' = false
 		};
 	}
 
@@ -756,11 +757,13 @@ component accessors=true singleton {
 			cfhttpparam(type="body",value=arguments.json);
 		}
 
-		if( find( "400", http.statuscode ) || find( "500", http.statuscode ) ){
-			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
-		// TODO : Honor Sentry’s HTTP 429 Retry-After header any other errors
-		} else if (!find("200",http.statuscode)){
-			writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
+		if( find( "400", http.statuscode ) || find( "500", http.statuscode ) || !find("200",http.statuscode) ){
+			if ( settings.throwOnPostError ) {
+				throw( message="Error posting to Sentry: #http.statuscode#", detail=http.filecontent );
+			} else {
+				writeDump( var="Error posting to Sentry: #http.statuscode# - #left( http.filecontent, 1000 )#", output='console' );
+			}
+			// TODO : Honor Sentry’s HTTP 429 Retry-After header any other errors
 		}
 	}
 
