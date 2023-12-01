@@ -126,7 +126,7 @@ component {
 	 */
 	private function loadAppenders(){
 		// Get config
-		var logBoxConfig 	= logBox.getConfig();
+		/*var logBoxConfig 	= logBox.getConfig();
 		var rootConfig 		= '';
 
 		// Register tracer appender
@@ -144,7 +144,19 @@ component {
 		);
 
 		// Store back config
-		logBox.configure( logBoxConfig );
+		logBox.configure( logBoxConfig );*/
+
+	    logBox.registerAppender(
+	      name    = 'sentry_appender',
+	      class     = '#moduleMapping#.models.SentryAppender',
+	      levelMin  = logBox.logLevels[ settings.levelMin ],
+	      levelMax  = logBox.logLevels[ settings.levelMax ]
+	    );
+	
+	    var appenders = logBox.getAppendersMap( 'sentry_appender' );
+	    // Register the appender with the root loggger, and turn the logger on.
+	    var root = logBox.getRootLogger();
+	    root.addAppender( appenders[ 'sentry_appender' ] );
 	}
 
 }
