@@ -39,6 +39,8 @@ component accessors=true singleton {
 	property name="sentryUrl" type="string";
 	/**  The Sentry version */
 	property name="sentryVersion" type="string";
+	/**  Which Sentry endpoint to send events to, could be "store" or "envelope"  */
+	property name="sentryEventEndpoint" type="string";
 	/** The name of the server, defaults to machine name, then cgi.http_host */
 	property name="serverName" type="string";
 	/** Log messages async */
@@ -65,7 +67,7 @@ component accessors=true singleton {
 		if ( arguments.settings.count() ) {
 			configure();
 		}
-		setModuleConfig( { version : "1.0.0" } );
+		setModuleConfig( { version : "2.0.0" } );
 
 		return this;
 	}
@@ -95,25 +97,26 @@ component accessors=true singleton {
 				"x-api-token",
 				"fwreinit"
 			],
-			"scrubHeaders"       : [ "x-api-token", "Authorization" ],
-			"release"            : "",
-			"environment"        : "production",
-			"DSN"                : "",
-			"publicKey"          : "",
-			"privateKey"         : "",
-			"projectID"          : 0,
-			"sentryUrl"          : "https://sentry.io",
-			"serverName"         : cgi.server_name,
-			"appRoot"            : expandPath( "/" ),
-			"sentryVersion"      : 7,
+			"scrubHeaders"        : [ "x-api-token", "Authorization" ],
+			"release"             : "",
+			"environment"         : "production",
+			"DSN"                 : "",
+			"publicKey"           : "",
+			"privateKey"          : "",
+			"projectID"           : 0,
+			"sentryUrl"           : "https://sentry.io",
+			"serverName"          : cgi.server_name,
+			"appRoot"             : expandPath( "/" ),
+			"sentryVersion"       : 7,
+			"sentryEventEndpoint" : "store",
 			// This is not arbitrary but must be a specific value. Leave as "cfml"
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
-			"platform"           : "cfml",
-			"logger"             : "sentry",
-			"userInfoUDF"        : "",
-			"extraInfoUdfs"      : {},
-			"showJavaStackTrace" : false,
-			"throwOnPostError"   : false
+			"platform"            : "cfml",
+			"logger"              : "sentry",
+			"userInfoUDF"         : "",
+			"extraInfoUdfs"       : {},
+			"showJavaStackTrace"  : false,
+			"throwOnPostError"    : false
 		};
 	}
 
@@ -173,6 +176,7 @@ component accessors=true singleton {
 		setServerName( settings.serverName );
 		setAsync( settings.async );
 		setSentryVersion( settings.sentryVersion );
+		setSentryEventEndpoint( settings.sentryEventEndpoint );
 		setLogger( settings.logger );
 		setPlatform( settings.platform );
 
@@ -255,7 +259,7 @@ component accessors=true singleton {
 
 	/**
 	 * Capture a message
-	 * https://docs.sentry.io/clientdev/interfaces/message/
+	 * https://develop.sentry.dev/sdk/event-payloads/message/
 	 *
 	 * @message        the raw message string ( max length of 1000 characters )
 	 * @level          The level to log
@@ -291,14 +295,14 @@ component accessors=true singleton {
 		if ( len( trim( arguments.message ) ) > 1000 ) arguments.message = left( arguments.message, 997 ) & "...";
 
 		sentryMessage = {
-			"message"                   : arguments.message,
-			"level"                     : arguments.level,
-			"sentry.interfaces.Message" : { "message" : arguments.message },
-			"logger"                    : arguments.logger
+			"message"  : arguments.message,
+			"level"    : arguments.level,
+			"logentry" : { "formatted" : arguments.message },
+			"logger"   : arguments.logger
 		};
 
 		if ( structKeyExists( arguments, "params" ) ) {
-			sentryMessage[ "sentry.interfaces.Message" ][ "params" ] = arguments.params;
+			sentryMessage[ "logentry" ][ "params" ] = arguments.params;
 		}
 		// Add tags
 		if ( !structIsEmpty( arguments.tags ) ) {
@@ -370,7 +374,7 @@ component accessors=true singleton {
 		arguments.exception.TagContext = arguments.exception.TagContext ?: [];
 		arguments.exception.message    = arguments.exception.message ?: "";
 
-		var sentryexceptionExtra = {};
+		var sentryExceptionExtra = {};
 		var file                 = "";
 		var fileArray            = "";
 		var currentTemplate      = "";
@@ -387,13 +391,12 @@ component accessors=true singleton {
 
 		/*
 		 * CORE AND OPTIONAL ATTRIBUTES
-		 * https://docs.sentry.io/clientdev/attributes/
+		 * https://develop.sentry.dev/sdk/event-payloads/
 		 */
 		var sentryException = {
-			"message" : arguments.exception.message & " " & arguments.exception.detail,
 			"level"   : arguments.level,
-			"culprit" : arguments.exception.message,
-			"logger"  : arguments.logger
+			"logger"  : arguments.logger,
+			"message" : arguments.exception.message & " " & arguments.exception.detail
 		};
 
 
@@ -489,20 +492,25 @@ component accessors=true singleton {
 
 		/*
 		 * EXCEPTION INTERFACE
-		 * https://docs.sentry.io/clientdev/interfaces/exception/
+		 * https://https://develop.sentry.dev/sdk/event-payloads/exception/
 		 */
-		sentryException[ "sentry.interfaces.Exception" ] = {
-			"value" : arguments.exception.message & " " & arguments.exception.detail,
-			"type"  : arguments.exception.type & " Error"
+		var currentException = {
+			"value"      : arguments.exception.message & " " & arguments.exception.detail,
+			"type"       : arguments.exception.type & " Error",
+			"stacktrace" : { "frames" : [] }
 		};
+
+		sentryException[ "exception" ] = { "values" : [ currentException ] };
+
+
 
 		/*
 		 * STACKTRACE INTERFACE
-		 * https://docs.sentry.io/clientdev/interfaces/stacktrace/
+		 * https://develop.sentry.dev/sdk/event-payloads/stacktrace/
 		 */
-		if ( arguments.oneLineStackTrace ) tagContext = [ tagContext[ 1 ] ];
-
-		sentryException[ "sentry.interfaces.Stacktrace" ] = { "frames" : [] };
+		if ( arguments.oneLineStackTrace ) {
+			tagContext = [ tagContext[ 1 ] ];
+		}
 
 		var stacki = 0;
 		for ( i = arrayLen( tagContext ); i > 0; i-- ) {
@@ -560,7 +568,7 @@ component accessors=true singleton {
 				thisStackItem.post_context[ 2 ] = fileArray[ errorLine + 2 ];
 			}
 
-			sentryException[ "sentry.interfaces.Stacktrace" ][ "frames" ][ stacki ] = thisStackItem;
+			currentException[ "stacktrace" ][ "frames" ][ stacki ] = thisStackItem;
 		}
 
 		capture(
@@ -621,7 +629,7 @@ component accessors=true singleton {
 
 		// Add global metadata
 		arguments.captureStruct[ "event_id" ]    = lCase( replace( createUUID(), "-", "", "all" ) );
-		arguments.captureStruct[ "timestamp" ]   = timeVars.timeStamp;
+		arguments.captureStruct[ "timestamp" ]   = timeVars.iso;
 		arguments.captureStruct[ "project" ]     = getProjectID();
 		arguments.captureStruct[ "server_name" ] = getServerName();
 		arguments.captureStruct[ "platform" ]    = getPlatform();
@@ -630,7 +638,7 @@ component accessors=true singleton {
 
 		/*
 		 * User interface
-		 * https://docs.sentry.io/clientdev/interfaces/user/
+		 * https://develop.sentry.dev/sdk/event-payloads/user/
 		 *
 		 * {
 		 *     "id" : "unique_id",
@@ -679,7 +687,7 @@ component accessors=true singleton {
 			correctCasingUserInfo[ key ] = thisUserInfo[ key ];
 		}
 
-		arguments.captureStruct[ "sentry.interfaces.User" ] = correctCasingUserInfo;
+		arguments.captureStruct[ "user" ] = correctCasingUserInfo;
 
 		var extraInfoUdfs = getExtraInfoUdfs();
 		for ( var key in extraInfoUdfs ) {
@@ -687,7 +695,7 @@ component accessors=true singleton {
 			arguments.captureStruct[ "extra" ][ key ] = extraInfoUdf();
 		}
 
-		// Prepare path for HTTP Interface
+		// Prepare path for Request Interface
 		arguments.path = trim( arguments.path );
 		if ( !len( arguments.path ) && structCount( arguments.cgiVars ) ) {
 			// leave off script name for SES URLs since rewrites were probably used
@@ -698,19 +706,12 @@ component accessors=true singleton {
 			}
 		}
 
-		var thisSession = {};
-		if ( ( getApplicationMetadata().SessionManagement ?: false ) && !isNull( session ) ) {
-			// Sanitize CFC instances from session scope,  Mostly to work around this stupid Lucee bug: https://luceeserver.atlassian.net/browse/LDEV-4676
-			thisSession = structifyObject( session );
-		}
-
-		// HTTP interface
-		// https://docs.sentry.io/clientdev/interfaces/http/
-		arguments.captureStruct[ "sentry.interfaces.Http" ] = {
-			"sessions" : thisSession,
-			"url"      : arguments.path,
-			"method"   : arguments.cgiVars.request_method ?: "GET",
-			"data"     : !structIsEmpty( form ) ? sanitizeFields( form ) : sanitizeFields(
+		// Request interface
+		// https://develop.sentry.dev/sdk/event-payloads/request/
+		arguments.captureStruct[ "request" ] = {
+			"url"    : arguments.path,
+			"method" : arguments.cgiVars.request_method ?: "GET",
+			"data"   : !structIsEmpty( form ) ? sanitizeFields( form ) : sanitizeFields(
 				isJSON( getHTTPRequestData().content ) ? deserializeJSON( getHTTPRequestData().content ) : {}
 			),
 			"query_string" : sanitizeQueryString( arguments.cgiVars.query_string ?: "" ),
@@ -727,19 +728,34 @@ component accessors=true singleton {
 		jsonCapture = serializeJSON( arguments.captureStruct );
 
 		// prepare header
-		header = "Sentry sentry_version=#getSentryVersion()#, sentry_timestamp=#timeVars.time#, sentry_key=#getPublicKey()#, sentry_secret=#getPrivateKey()#, sentry_client=Sentry/#moduleConfig.version#";
+		// https://develop.sentry.dev/sdk/overview/#authentication
+		header = "Sentry sentry_version=#getSentryVersion()#, sentry_client=Sentry/#moduleConfig.version#, sentry_key=#getPublicKey()#";
+		if ( getSentryEventEndpoint() == "store" ) {
+			header &= ", sentry_timestamp=#timeVars.unix#";
+		}
+		if ( !isNull( getPrivateKey() ) && len( getPrivateKey() ) ) {
+			header &= ", sentry_secret=#getPrivateKey()#";
+		}
+
 		// post message
 		if ( arguments.useThread ) {
 			cfthread(
 				action      = "run",
 				name        = "sentry-thread-" & createUUID(),
 				header      = header,
+				event_id    = captureStruct.event_id,
+				sent_at     = timeVars.iso,
 				jsonCapture = jsonCapture
 			) {
-				post( header, jsonCapture );
+				post( header, event_id, sent_at, jsonCapture );
 			}
 		} else {
-			post( header, jsonCapture );
+			post(
+				header,
+				captureStruct.event_id,
+				timeVars.iso,
+				jsonCapture
+			);
 		}
 	}
 
@@ -751,22 +767,53 @@ component accessors=true singleton {
 	/**
 	 * Post message to Sentry
 	 */
-	private void function post( required string header, required string json ){
-		var http = {};
+	private void function post(
+		required string header,
+		required string event_id,
+		required string sent_at,
+		required string json
+	){
+		var http     = {};
 		// send to sentry via REST API Call
+		var httpBody = arguments.json;
+
+		if ( getSentryEventEndpoint() == "envelope" ) {
+			var envelope = [];
+
+			arrayAppend(
+				envelope,
+				serializeJSON( {
+					"event_id" : arguments.event_id,
+					"sent_at"  : arguments.sent_at
+				} )
+			);
+			arrayAppend(
+				envelope,
+				serializeJSON( {
+					"type"         : "event",
+					"length"       : len( arguments.json ),
+					"content_type" : "application/json"
+				} )
+			);
+			arrayAppend( envelope, arguments.json );
+
+
+			httpBody = arrayToList( envelope, chr( 10 ) ) & chr( 10 );
+			systemOutput( httpbody, true )
+		}
 
 		cfhttp(
-			url     : getSentryUrl() & "/api/" & getProjectID() & "/store/",
-			method  : "post",
-			timeout : "2",
-			result  : "http"
+			url     = getSentryUrl() & "/api/" & getProjectID() & "/" & getSentryEventEndpoint() & "/",
+			method  = "post",
+			timeout = "2",
+			result  = "http"
 		) {
 			cfhttpparam(
 				type  = "header",
 				name  = "X-Sentry-Auth",
 				value = arguments.header
 			);
-			cfhttpparam( type = "body", value = arguments.json );
+			cfhttpparam( type = "body", value = httpBody );
 		}
 
 		if ( find( "400", http.statuscode ) || find( "500", http.statuscode ) || !find( "200", http.statuscode ) ) {
@@ -788,8 +835,8 @@ component accessors=true singleton {
 	private struct function getTimeVars(){
 		var time     = now();
 		var timeVars = {
-			"time"      : time.getTime(),
-			"timeStamp" : dateTimeFormat( time, "yyyy-mm-dd'T'HH:nn:ss", "UTC" )
+			"unix" : toString( int( time.getTime() / 1000 ) ),
+			"iso"  : dateTimeFormat( time, "yyyy-mm-dd'T'HH:nn:ss'Z'", "UTC" )
 		};
 		return timeVars;
 	}
@@ -855,7 +902,7 @@ component accessors=true singleton {
 		}
 		if ( structCount( arguments.data ) ) {
 			for ( var thisField in variables.settings.scrubFields ) {
-				// If header found, then sanitize it.
+				// If field found, then sanitize it.
 				if ( structKeyExists( arguments.data, thisField ) ) {
 					arguments.data[ thisField ] = "[Filtered]";
 				}
