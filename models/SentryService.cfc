@@ -799,7 +799,6 @@ component accessors=true singleton {
 
 
 			httpBody = arrayToList( envelope, chr( 10 ) ) & chr( 10 );
-			systemOutput( httpbody, true )
 		}
 
 		cfhttp(
