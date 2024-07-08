@@ -100,7 +100,7 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 					return [ "foo", "bar" ];
 				} );
 				service.captureMessage( 'This is a test message' );
-				var extra = deserializeJSON( service.$callLog( "post" ).post[1][2] ).extra;
+				var extra = deserializeJSON( service.$callLog( "post" ).post[1][4] ).extra;
 				expect( extra ).toHaveKey( 'queries' );
 				expect( extra ).toHaveKey( 'qb' );
 				expect( extra.queries ).toBe( [ "foo", "bar" ] );
