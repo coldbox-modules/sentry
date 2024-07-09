@@ -155,6 +155,9 @@ settings = {
   projectID : 0,
   // URL of your Sentry server (Not needed when using DSN)
   sentryUrl : 'https://sentry.io',
+  // posting to "#sentryUrl#/api/#projectID#/store" is deprecated, but backward compatible
+  // set to "envelope" to send events to modern "#sentryUrl#/api/#projectID#/envelope"
+  sentryEventEndpoint : "store",
   // name of your server
   serverName : cgi.server_name,
   // Absolute path to the root of your app, defaults to the webroot.
