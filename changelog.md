@@ -8,3 +8,4 @@
 
 * Update the event structure to the new format Sentry has adopted for their official SDKs
 * Add support for the new `/api/{project_id}/envelope` endpoint Sentry has adopted for sending events
+* Don't send cookie and form scope data by default
