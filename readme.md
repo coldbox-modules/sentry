@@ -28,6 +28,12 @@ Just drop into your modules folder or use the `box` cli to install
 box install sentry
 ```
 
+## Updating to Version 2
+
+Version 2 of this module includes some potentially breaking changes in how the event data that is sent to Sentry is constructed. In version 2 the events match the up to date format that Sentry has adopted for their official SDKs. If you are not sending your events to the Sentry hosted service, but using a self-hosted Sentry instance, please be sure you are running an up to date version of the Sentry service before updating to version 2 of this module.
+
+Additionally, Sentry has deprecated sending events to the `/api/{project_id}/store` endpoint in favor of a new `/api/{project_id}/envelope` endpoint (and a new structure for the body of the post requests). Again, if you self-host an older version of the Sentry service, sending events to the `store` endpoint might be your only option. There is a new module setting, `sentryEventEndpoint`, that defaults to `store`, but can be set to `envelope` to enable sending events to the modern endpoint.
+
 ## CFML App Installation
 
 If your app uses neither ColdBox nor LogBox, you can still instantiate the `SentryService` and use it directly so long as you prep it with the settings it needs.
