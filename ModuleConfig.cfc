@@ -49,6 +49,9 @@ component {
 			"levelMax"               : "ERROR",
 			// Enable/disable error logging
 			"enableExceptionLogging" : true,
+			// Sentry recommends not sending cookie and form data by default
+			"sendCookies"            : false,
+			"sendPostData"           : false,
 			// Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
 			"scrubFields"            : [],
 			"scrubHeaders"           : [],

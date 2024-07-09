@@ -85,6 +85,10 @@ component accessors=true singleton {
 			"levelMax"               : "ERROR",
 			// Enable/disable error logging
 			"enableExceptionLogging" : true,
+			// Whether to include client cookies when sending request information to Sentry
+			"sendCookies"            : false,
+			// Whether to include POST data (e.g. FORM) when sending request information to Sentry
+			"sendPostData"           : false,
 			// Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
 			"scrubFields"            : [
 				"passwd",
@@ -709,21 +713,31 @@ component accessors=true singleton {
 		// Request interface
 		// https://develop.sentry.dev/sdk/event-payloads/request/
 		arguments.captureStruct[ "request" ] = {
-			"url"    : arguments.path,
-			"method" : arguments.cgiVars.request_method ?: "GET",
-			"data"   : !structIsEmpty( form ) ? sanitizeFields( form ) : sanitizeFields(
-				isJSON( getHTTPRequestData().content ) ? deserializeJSON( getHTTPRequestData().content ) : {}
-			),
+			"url"          : arguments.path,
+			"method"       : arguments.cgiVars.request_method ?: "GET",
 			"query_string" : sanitizeQueryString( arguments.cgiVars.query_string ?: "" ),
-			// Sentry requires all cookies be strings
-			"cookies"      : sanitizeFields(
-				cookie.map( function( k, v ){
-					return toString( v );
-				} )
-			),
-			"env"     : arguments.cgiVars,
-			"headers" : sanitizeHeaders( httpRequestData.headers )
+			"env"          : sanitizeEnv( arguments.cgiVars ),
+			"headers"      : sanitizeHeaders( httpRequestData.headers )
 		};
+
+		if ( variables.settings.sendCookies ) {
+			arguments.captureStruct[ "request" ][ "cookies" ] = sanitizeFields(
+				cookie.map( function( k, v ){
+					return toString( v ); // Sentry requires all cookies be strings
+				} )
+			)
+		}
+
+		if ( variables.settings.sendPostData ) {
+			if ( !structIsEmpty( form ) ) {
+				arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields( form );
+			} else {
+				arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields(
+					isJSON( httpRequestData.content ) ? deserializeJSON( httpRequestData.content ) : {}
+				)
+			}
+		}
+
 		// serialize data
 		jsonCapture = serializeJSON( arguments.captureStruct );
 
@@ -884,6 +898,11 @@ component accessors=true singleton {
 				}
 			}
 		}
+
+		if ( !variables.settings.sendCookies && structKeyExists( arguments.headers, "Cookie" ) ) {
+			arguments.headers.Cookie = "[Filtered]";
+		}
+
 		// Sentry requires all headers be strings
 		return arguments.headers.map( function( k, v ){
 			return toString( v );
@@ -908,6 +927,25 @@ component accessors=true singleton {
 			}
 		}
 		return arguments.data;
+	}
+
+	/**
+	 * Sanitize env/CGI vars
+	 *
+	 * @data The data fields
+	 */
+	private any function sanitizeEnv( required any data ){
+		if ( !isStruct( arguments.data ) ) {
+			return arguments.data;
+		}
+
+		// don't mutate CGI scope
+		return arguments.data.map( function( k, v ){
+			if ( !variables.settings.sendCookies && k == "http_cookie" ) {
+				return "[Filtered]";
+			}
+			return v;
+		} );
 	}
 
 	/**

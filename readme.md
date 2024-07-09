@@ -34,6 +34,8 @@ Version 2 of this module includes some potentially breaking changes in how the e
 
 Additionally, Sentry has deprecated sending events to the `/api/{project_id}/store` endpoint in favor of a new `/api/{project_id}/envelope` endpoint (and a new structure for the body of the post requests). Again, if you self-host an older version of the Sentry service, sending events to the `store` endpoint might be your only option. There is a new module setting, `sentryEventEndpoint`, that defaults to `store`, but can be set to `envelope` to enable sending events to the modern endpoint.
 
+In version 2, `cookie` and `form` scope data will not be sent with events by default. To enable sending this data, use the new `sendCookies` and `sendPostData` settings.
+
 ## CFML App Installation
 
 If your app uses neither ColdBox nor LogBox, you can still instantiate the `SentryService` and use it directly so long as you prep it with the settings it needs.
@@ -142,6 +144,10 @@ settings = {
   enableExceptionLogging : true,
   // Send messages to Sentry in a thread
   async : true,
+  // Whether to include client cookies when sending request information to Sentry
+  sendCookies : false,
+  // Whether to include POST data (e.g. FORM) when sending request information to Sentry
+  sendPostData : false,
   // Don't sent URL or FORM field values of these names to Sentry
   scrubFields : [ 'passwd', 'password', 'password_confirmation', 'secret', 'confirm_password', 'secret_token', 'APIToken', 'x-api-token', 'fwreinit' ],
   // Don't sent HTTP header values of these names to Sentry
