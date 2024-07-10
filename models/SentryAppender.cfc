@@ -1,30 +1,30 @@
 /**
-*********************************************************************************
-* Copyright Since 2005 ColdBox Framework by Luis Majano and Ortus Solutions, Corp
-* www.ortussolutions.com
-* ---
-* Appender for Sentry leveraging the Sentry service
-*/
-component extends="coldbox.system.logging.AbstractAppender" accessors=true{
-	
+ *********************************************************************************
+ * Copyright Since 2005 ColdBox Framework by Luis Majano and Ortus Solutions, Corp
+ * www.ortussolutions.com
+ * ---
+ * Appender for Sentry leveraging the Sentry service
+ */
+component extends="coldbox.system.logging.AbstractAppender" accessors=true {
+
 	/**
-	* Constructor
-	*/
-	function init( 
+	 * Constructor
+	 */
+	function init(
 		required name,
-		struct properties=structnew(),
-		layout="",
-		numeric levelMin=0,
-		numeric levelMax=4
+		struct properties = structNew(),
+		layout            = "",
+		numeric levelMin  = 0,
+		numeric levelMax  = 4
 	){
-		super.init( argumentCollection=arguments );
-		
+		super.init( argumentCollection = arguments );
+
 		// Get sentry Service from WireBox if it's not already passed to the appender
-		if( !propertyExists( 'sentryService' ) ) {
+		if ( !propertyExists( "sentryService" ) ) {
 			// wirebox must be in application scope.
-			setProperty( 'sentryService', application.wirebox.getInstance( "SentryService@sentry" ) );	
+			setProperty( "sentryService", application.wirebox.getInstance( "SentryService@sentry" ) );
 		}
-		
+
 		return this;
 	}
 
@@ -33,52 +33,46 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true{
 	 */
 	public void function logMessage( required logEvent ){
 		var extraInfo = arguments.logEvent.getExtraInfo();
-		var level = this.logLevels.lookup( arguments.logEvent.getSeverity() );
-		var message = arguments.logEvent.getMessage();
+		var level     = this.logLevels.lookup( arguments.logEvent.getSeverity() );
+		var message   = arguments.logEvent.getMessage();
 		var loggerCat = arguments.logEvent.getcategory();
-	
-		if( level == 'warn' ) {
-			level = 'warning';
+
+		if ( level == "warn" ) {
+			level = "warning";
 		}
-	
+
 		// Is this an exception or not?
-		if( 
+		if (
 			( isStruct( extraInfo ) || isObject( extraInfo ) )
-            && extraInfo.keyExists( "StackTrace" ) && extraInfo.keyExists( "message" ) && extraInfo.keyExists( "detail" ) 
-		){
-			
-			getProperty( 'sentryService' ).captureException(
+			&& extraInfo.keyExists( "StackTrace" ) && extraInfo.keyExists( "message" ) && extraInfo.keyExists( "detail" )
+		) {
+			getProperty( "sentryService" ).captureException(
 				exception = extraInfo,
-				level 	= level,
-				message = message,
-				logger = loggerCat
+				level     = level,
+				message   = message,
+				logger    = loggerCat
 			);
-				
-		} else if( 
+		} else if (
 			( isStruct( extraInfo ) || isObject( extraInfo ) )
-			&& extraInfo.keyExists( "exception" ) && isStruct( extraInfo.exception ) && extraInfo.exception.keyExists( "StackTrace" ) 
-		){
-			
+			&& extraInfo.keyExists( "exception" ) && isStruct( extraInfo.exception ) && extraInfo.exception.keyExists( "StackTrace" )
+		) {
 			var trimmedExtra = structCopy( extraInfo );
-			trimmedExtra.delete( 'exception' );
-			
-			getProperty( 'sentryService' ).captureException(
-				exception = extraInfo.exception,
-				level 	= level,
-				message = message,
-				logger = loggerCat,
+			trimmedExtra.delete( "exception" );
+
+			getProperty( "sentryService" ).captureException(
+				exception      = extraInfo.exception,
+				level          = level,
+				message        = message,
+				logger         = loggerCat,
 				additionalData = trimmedExtra
 			);
-				
 		} else {
-						
-			getProperty( 'sentryService' ).captureMessage(
-				message	= message,
-				level 	= level,
-				logger = loggerCat,
+			getProperty( "sentryService" ).captureMessage(
+				message        = message,
+				level          = level,
+				logger         = loggerCat,
 				additionalData = extraInfo
 			);
-				
 		}
 	}
 
