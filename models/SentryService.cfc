@@ -555,10 +555,10 @@ component accessors=true singleton {
 				thisStackItem.pre_context[ 1 ] = fileArray[ errorLine - 3 ];
 			}
 			if ( errorLine - 2 >= 1 && errorLine - 2 <= fileLen ) {
-				thisStackItem.pre_context[ 1 ] = fileArray[ errorLine - 2 ];
+				thisStackItem.pre_context[ 2 ] = fileArray[ errorLine - 2 ];
 			}
 			if ( errorLine - 1 >= 1 && errorLine - 1 <= fileLen ) {
-				thisStackItem.pre_context[ 2 ] = fileArray[ errorLine - 1 ];
+				thisStackItem.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
 			}
 
 			if ( errorLine <= fileLen ) {
@@ -566,10 +566,23 @@ component accessors=true singleton {
 			}
 
 			if ( fileLen >= errorLine + 1 ) {
-				thisStackItem.post_context[ 1 ] = fileArray[ errorLine + 1 ];
+				var errorLine1 = errorLine + 1;
+
+				if (errorLine1 != 0) {
+					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 ];
+				} else if (fileLen >= errorLine1 + 1) {
+					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
+				}
 			}
+
 			if ( fileLen >= errorLine + 2 ) {
-				thisStackItem.post_context[ 2 ] = fileArray[ errorLine + 2 ];
+				var errorLine2 = errorLine + 2;
+
+				if (errorLine2 != 1) {
+					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 ];
+				} else if (fileLen >= errorLine2 + 1) {
+					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
+				}
 			}
 
 			currentException[ "stacktrace" ][ "frames" ][ stacki ] = thisStackItem;
