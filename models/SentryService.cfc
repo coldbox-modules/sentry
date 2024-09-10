@@ -642,7 +642,7 @@ component accessors=true singleton {
 		var signature       = "";
 		var header          = "";
 		var timeVars        = getTimeVars();
-		var httpRequestData = getHTTPRequestData();
+		var httpRequestData = getHTTPDataForRequest();
 
 		// Add global metadata
 		arguments.captureStruct[ "event_id" ]    = lCase( replace( createUUID(), "-", "", "all" ) );
@@ -882,7 +882,7 @@ component accessors=true singleton {
 	 * Get Real IP, by looking at clustered, proxy headers and locally.
 	 */
 	private function getRealIP(){
-		var headers = getHTTPRequestData().headers;
+		var headers = getHTTPDataForRequest().headers;
 
 		// When going through a proxy, the IP can be a delimtied list, thus we take the last one in the list
 
@@ -993,6 +993,20 @@ component accessors=true singleton {
 			normalizedPath = "\\" & normalizedPath.mid( 3, normalizedPath.len() - 2 );
 		}
 		return normalizedPath.replace( "//", "/", "all" );
+	}
+
+	/**
+	 * I return the http request data
+	 */
+	struct function getHTTPDataForRequest() {
+		try {
+			var result = getHTTPRequestData();
+			if ( !isNull( result ) ) {
+				return result;
+			}
+		} catch ( any e ) {
+		}
+		return { "headers" : {}, "content" : "" };
 	}
 
 }
