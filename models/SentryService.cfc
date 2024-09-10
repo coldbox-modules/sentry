@@ -555,10 +555,10 @@ component accessors=true singleton {
 				thisStackItem.pre_context[ 1 ] = fileArray[ errorLine - 3 ];
 			}
 			if ( errorLine - 2 >= 1 && errorLine - 2 <= fileLen ) {
-				thisStackItem.pre_context[ 1 ] = fileArray[ errorLine - 2 ];
+				thisStackItem.pre_context[ 2 ] = fileArray[ errorLine - 2 ];
 			}
 			if ( errorLine - 1 >= 1 && errorLine - 1 <= fileLen ) {
-				thisStackItem.pre_context[ 2 ] = fileArray[ errorLine - 1 ];
+				thisStackItem.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
 			}
 
 			if ( errorLine <= fileLen ) {
@@ -566,10 +566,23 @@ component accessors=true singleton {
 			}
 
 			if ( fileLen >= errorLine + 1 ) {
-				thisStackItem.post_context[ 1 ] = fileArray[ errorLine + 1 ];
+				var errorLine1 = errorLine + 1;
+
+				if (errorLine1 != 0) {
+					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 ];
+				} else if (fileLen >= errorLine1 + 1) {
+					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
+				}
 			}
+
 			if ( fileLen >= errorLine + 2 ) {
-				thisStackItem.post_context[ 2 ] = fileArray[ errorLine + 2 ];
+				var errorLine2 = errorLine + 2;
+
+				if (errorLine2 != 1) {
+					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 ];
+				} else if (fileLen >= errorLine2 + 1) {
+					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
+				}
 			}
 
 			currentException[ "stacktrace" ][ "frames" ][ stacki ] = thisStackItem;
@@ -629,7 +642,7 @@ component accessors=true singleton {
 		var signature       = "";
 		var header          = "";
 		var timeVars        = getTimeVars();
-		var httpRequestData = getHTTPRequestData();
+		var httpRequestData = getHTTPDataForRequest();
 
 		// Add global metadata
 		arguments.captureStruct[ "event_id" ]    = lCase( replace( createUUID(), "-", "", "all" ) );
@@ -869,7 +882,7 @@ component accessors=true singleton {
 	 * Get Real IP, by looking at clustered, proxy headers and locally.
 	 */
 	private function getRealIP(){
-		var headers = getHTTPRequestData().headers;
+		var headers = getHTTPDataForRequest().headers;
 
 		// When going through a proxy, the IP can be a delimtied list, thus we take the last one in the list
 
@@ -980,6 +993,20 @@ component accessors=true singleton {
 			normalizedPath = "\\" & normalizedPath.mid( 3, normalizedPath.len() - 2 );
 		}
 		return normalizedPath.replace( "//", "/", "all" );
+	}
+
+	/**
+	 * I return the http request data
+	 */
+	struct function getHTTPDataForRequest() {
+		try {
+			var result = getHTTPRequestData();
+			if ( !isNull( result ) ) {
+				return result;
+			}
+		} catch ( any e ) {
+		}
+		return { "headers" : {}, "content" : "" };
 	}
 
 }
