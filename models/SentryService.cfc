@@ -561,7 +561,7 @@ component accessors=true singleton {
 				thisStackItem.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
 			}
 
-			if ( errorLine <= fileLen ) {
+			if ( errorLine <= fileLen && fileLen > 0 && errorLine >= 1 ) {
 				thisStackItem[ "context_line" ] = fileArray[ errorLine ];
 			}
 
