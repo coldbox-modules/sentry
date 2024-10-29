@@ -747,7 +747,7 @@ component accessors=true singleton {
 			} else {
 				arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields(
 					isJSON( httpRequestData.content ) ? deserializeJSON( httpRequestData.content ) : {}
-				)
+				);
 			}
 		}
 
