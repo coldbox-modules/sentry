@@ -738,7 +738,7 @@ component accessors=true singleton {
 				cookie.map( function( k, v ){
 					return toString( v ); // Sentry requires all cookies be strings
 				} )
-			)
+			);
 		}
 
 		if ( variables.settings.sendPostData ) {
