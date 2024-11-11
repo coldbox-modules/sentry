@@ -1,0 +1,48 @@
+name: Build Snapshot
+
+on:
+  push:
+    branches:
+      - 'development'
+
+# Unique group name per workflow-branch/tag combo
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ##########################################################################################
+  # Module Tests
+  ##########################################################################################
+  tests:
+    secrets: inherit
+    uses: ./.github/workflows/tests.yml
+
+  ##########################################################################################
+  # Format Source Code
+  ##########################################################################################
+  format:
+    name: Code Auto-Formatting
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auto-format
+        uses: Ortus-Solutions/commandbox-action@v1.0.2
+        with:
+          cmd: run-script format
+
+      - name: Commit Format Changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Apply cfformat changes
+
+  ##########################################################################################
+  # Release it
+  ##########################################################################################
+  release:
+    uses: ./.github/workflows/release.yml
+    needs: [ tests, format ]
+    secrets: inherit
+    with:
+      snapshot: true
