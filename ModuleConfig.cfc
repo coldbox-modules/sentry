@@ -95,12 +95,7 @@ component {
 			}
 		}
 
-		interceptorSettings = {
-			customInterceptionPoints : [
-				"onSentryEventCapture"
-			]
-		};
-
+		interceptorSettings = { customInterceptionPoints : [ "onSentryEventCapture" ] };
 	}
 
 	/**

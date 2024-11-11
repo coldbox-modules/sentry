@@ -568,9 +568,9 @@ component accessors=true singleton {
 			if ( fileLen >= errorLine + 1 ) {
 				var errorLine1 = errorLine + 1;
 
-				if (errorLine1 != 0) {
+				if ( errorLine1 != 0 ) {
 					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 ];
-				} else if (fileLen >= errorLine1 + 1) {
+				} else if ( fileLen >= errorLine1 + 1 ) {
 					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
 				}
 			}
@@ -578,9 +578,9 @@ component accessors=true singleton {
 			if ( fileLen >= errorLine + 2 ) {
 				var errorLine2 = errorLine + 2;
 
-				if (errorLine2 != 1) {
+				if ( errorLine2 != 1 ) {
 					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 ];
-				} else if (fileLen >= errorLine2 + 1) {
+				} else if ( fileLen >= errorLine2 + 1 ) {
 					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
 				}
 			}
@@ -689,10 +689,13 @@ component accessors=true singleton {
 
 			// Assemble any trace parent data
 			var traceParent = httpRequestData.headers.traceParent ?: "";
-			if( !len( traceParent ) && !isNull( coldbox )  ) {
+			if ( !len( traceParent ) && !isNull( coldbox ) ) {
 				// Append any trace information which might be provided the `cbotel` module
-				var prc = coldbox.getRequestService().getContext().getPrivateCollection();
-				if( prc.keyExists( "openTelemetry" ) && isStruct( prc.openTelemetry ) ){
+				var prc = coldbox
+					.getRequestService()
+					.getContext()
+					.getPrivateCollection();
+				if ( prc.keyExists( "openTelemetry" ) && isStruct( prc.openTelemetry ) ) {
 					traceParent = prc.openTelemetry.traceParent ?: "";
 				}
 			}
@@ -763,13 +766,10 @@ component accessors=true singleton {
 		}
 
 		// Announce an interception to allow other modules and listeners to modify the sentry request
-		if( !isNull( coldbox ) ){
-			coldbox.getInterceptorService().announce(
-				"onSentryEventCapture",
-				{
-					"event" : arguments.captureStruct
-				}
-			);
+		if ( !isNull( coldbox ) ) {
+			coldbox
+				.getInterceptorService()
+				.announce( "onSentryEventCapture", { "event" : arguments.captureStruct } );
 		}
 
 		// serialize data
@@ -795,7 +795,13 @@ component accessors=true singleton {
 				sent_at     = timeVars.iso,
 				jsonCapture = jsonCapture
 			) {
-				post( header, event_id, sent_at, jsonCapture, traceParent );
+				post(
+					header,
+					event_id,
+					sent_at,
+					jsonCapture,
+					traceParent
+				);
 			}
 		} else {
 			post(
@@ -864,7 +870,7 @@ component accessors=true singleton {
 			);
 
 			// Add our traceparent header if provided https://develop.sentry.dev/sdk/telemetry/traces/#header-traceparent
-			if( len( arguments.traceparent) ){
+			if ( len( arguments.traceparent ) ) {
 				cfhttpparam(
 					type  = "header",
 					name  = "traceparent",
@@ -1031,7 +1037,7 @@ component accessors=true singleton {
 	/**
 	 * I return the http request data
 	 */
-	struct function getHTTPDataForRequest() {
+	struct function getHTTPDataForRequest(){
 		try {
 			var result = getHTTPRequestData();
 			if ( !isNull( result ) ) {

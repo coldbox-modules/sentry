@@ -44,7 +44,9 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true {
 		// Is this an exception or not?
 		if (
 			( isStruct( extraInfo ) || isObject( extraInfo ) )
-			&& extraInfo.keyExists( "StackTrace" ) && extraInfo.keyExists( "message" ) && extraInfo.keyExists( "detail" )
+			&& extraInfo.keyExists( "StackTrace" ) && extraInfo.keyExists( "message" ) && extraInfo.keyExists(
+				"detail"
+			)
 		) {
 			getProperty( "sentryService" ).captureException(
 				exception = extraInfo,
@@ -54,7 +56,9 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true {
 			);
 		} else if (
 			( isStruct( extraInfo ) || isObject( extraInfo ) )
-			&& extraInfo.keyExists( "exception" ) && isStruct( extraInfo.exception ) && extraInfo.exception.keyExists( "StackTrace" )
+			&& extraInfo.keyExists( "exception" ) && isStruct( extraInfo.exception ) && extraInfo.exception.keyExists(
+				"StackTrace"
+			)
 		) {
 			var trimmedExtra = structCopy( extraInfo );
 			trimmedExtra.delete( "exception" );
