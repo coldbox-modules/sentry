@@ -672,6 +672,7 @@ component accessors=true singleton {
 		// If there is a closure to produce user info, call it
 		if ( isCustomFunction( userInfoUDF ) ) {
 			// Check for a non-ColdBox context
+			var traceParent = "";
 			if ( isNull( coldbox ) ) {
 				// Call the custon closure to produce user info
 				local.tmpUserInfo = userInfoUDF();
@@ -684,6 +685,16 @@ component accessors=true singleton {
 					event.getCollection(),
 					event.getPrivateCollection()
 				);
+			}
+
+			// Assemble any trace parent data
+			var traceParent = httpRequestData.headers.traceParent ?: "";
+			if( !len( traceParent ) && !isNull( coldbox )  ) {
+				// Append any trace information which might be provided the `cbotel` module
+				var prc = coldbox.getRequestService().getContext().getPrivateCollection();
+				if( prc.keyExists( "openTelemetry" ) && isStruct( prc.openTelemetry ) ){
+					traceParent = prc.openTelemetry.traceParent ?: "";
+				}
 			}
 
 			if ( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
@@ -774,14 +785,15 @@ component accessors=true singleton {
 				sent_at     = timeVars.iso,
 				jsonCapture = jsonCapture
 			) {
-				post( header, event_id, sent_at, jsonCapture );
+				post( header, event_id, sent_at, jsonCapture, traceParent );
 			}
 		} else {
 			post(
 				header,
 				captureStruct.event_id,
 				timeVars.iso,
-				jsonCapture
+				jsonCapture,
+				traceParent
 			);
 		}
 	}
@@ -798,7 +810,8 @@ component accessors=true singleton {
 		required string header,
 		required string event_id,
 		required string sent_at,
-		required string json
+		required string json,
+		string traceParent = ""
 	){
 		var http     = {};
 		// send to sentry via REST API Call
@@ -839,6 +852,16 @@ component accessors=true singleton {
 				name  = "X-Sentry-Auth",
 				value = arguments.header
 			);
+
+			// Add our traceparent header if provided https://develop.sentry.dev/sdk/telemetry/traces/#header-traceparent
+			if( len( arguments.traceparent) ){
+				cfhttpparam(
+					type  = "header",
+					name  = "traceparent",
+					value = arguments.traceparent
+				);
+			}
+
 			cfhttpparam( type = "body", value = httpBody );
 		}
 

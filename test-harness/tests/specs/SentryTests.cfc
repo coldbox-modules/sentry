@@ -3,6 +3,8 @@
 */
 component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 
+	this.loadColdbox = true;
+
 /*********************************** LIFE CYCLE Methods ***********************************/
 
 	// executes before all suites+specs in the run() method
@@ -77,7 +79,7 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 					e.LockOperation = 'This is my LockOperation';
 					e.ErrorCode = 'This is my ErrorCode';
 					e.ExtendedInfo = 'This is my ExtendedInfo';
-					
+
 					getLogbox().getRootLogger().error( 'Extra Error Info', e );
 				}
 			});
@@ -105,6 +107,47 @@ component extends='coldbox.system.testing.BaseTestCase' appMapping='/root'{
 				expect( extra ).toHaveKey( 'qb' );
 				expect( extra.queries ).toBe( [ "foo", "bar" ] );
 				expect( extra.qb ).toBe( [ "foo", "bar" ] );
+			});
+
+			it( 'Can capture traceparent data from the http request', function(){
+				var service = prepareMock( getSentry() );
+				var testTraceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+				service.setEnabled( true );
+				service.$(
+					method="getHTTPDataForRequest",
+					callback=function(){
+					return {
+						"headers" : {
+							"traceparent" : testTraceParent
+						},
+						"content" : ""
+					};
+				});
+				service.$( "post" );
+
+				service.captureMessage( 'This is a test message' );
+				var traceParent = service.$callLog( "post" ).post[1][5];
+				expect( traceParent ).toBe( testTraceParent );
+			});
+
+
+
+			it( 'Can capture traceparent data from the cbotel module', function(){
+				var service = prepareMock( getSentry() );
+				var testTraceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+				service.setEnabled( true );
+				service.setColdbox( getController() );
+
+				getController().getRequestService().getContext().setPrivateValue(
+					"openTelemetry",
+					{
+						"traceparent" : testTraceParent
+					}
+				);
+				service.$( "post" );
+				service.captureMessage( 'This is a test message' );
+				var traceParent = service.$callLog( "post" ).post[1][5];
+				expect( traceParent ).toBe( testTraceParent );
 			});
 
 		});
