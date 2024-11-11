@@ -762,6 +762,16 @@ component accessors=true singleton {
 			}
 		}
 
+		// Announce an interception to allow other modules and listeners to modify the sentry request
+		if( !isNull( coldbox ) ){
+			coldbox.getInterceptorService().announce(
+				"onSentryEventCapture",
+				{
+					"event" : arguments.captureStruct
+				}
+			);
+		}
+
 		// serialize data
 		jsonCapture = serializeJSON( arguments.captureStruct );
 
