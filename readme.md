@@ -193,6 +193,24 @@ settings = {
 }
 ```
 
+### Trace Data
+
+The Sentry service is configure to automatically pass along the [W3 standard `traceparent` header](https://www.w3.org/TR/trace-context/#traceparent-header), which [Sentry will ingest](https://develop.sentry.dev/sdk/telemetry/traces/#header-traceparent) and append to the entry as distributed tracing data.  If the upstream does not send this header [the `cbotel` module](https://forgebox.io/view/cbotel) may be used to create the trace parent data.
+
+
+### Interceptions
+
+The `onSentryEventCapture` interception point, allows other modules or framework listeners to contribute to sentry logs ( e.g providing tags or additional user info )
+Example usage:
+
+```java
+function onSentryEventCapture( event, rc, prc, interceptData ){
+	var sentryEvent = interceptData.event;
+	sentryEvent.tags[ "foo" ] = "bar";
+}
+```
+
+
 ### Credit
 
 This project is based on the fine open source work of others.  

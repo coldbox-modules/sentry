@@ -1,7 +1,7 @@
 {
     "name":"Sentry",
     "author":"Ortus Solutions <info@ortussolutions.com>",
-    "version":"2.0.1",
+    "version":"2.1.0",
     "slug":"sentry",
     "type":"modules",
     "homepage":"https://github.com/coldbox-modules/sentry",
@@ -32,6 +32,24 @@
         "*.md"
     ],
     "scripts":{
-        "toMaster":"recipe build/toMaster.boxr"
+		"build:module":"task run taskFile=build/Build.cfc :projectName=`package show slug` :version=`package show version`",
+        "build:docs":"task run taskFile=build/Build.cfc target=docs :projectName=`package show slug` :version=`package show version`",
+        "install:dependencies":"install --force && cd test-harness && install --force",
+        "release":"recipe build/release.boxr",
+        "format":"cfformat run helpers,models,interceptors,handlers,test-harness/tests/,ModuleConfig.cfc --overwrite",
+        "format:watch":"cfformat watch helpers,models,interceptors,handlers,test-harness/tests/,ModuleConfig.cfc ./.cfformat.json",
+        "format:check":"cfformat check helpers,models,interceptors,handlers,test-harness/tests/,ModuleConfig.cfc ./.cfformat.json",
+        "start:lucee":"server start serverConfigFile=server-lucee@5.json",
+        "start:2018":"server start serverConfigFile=server-adobe@2018.json",
+        "start:2021":"server start serverConfigFile=server-adobe@2021.json",
+        "stop:lucee":"server stop serverConfigFile=server-lucee@5.json",
+        "stop:2018":"server stop serverConfigFile=server-adobe@2018.json",
+        "stop:2021":"server stop serverConfigFile=server-adobe@2021.json",
+        "logs:lucee":"server log serverConfigFile=server-lucee@5.json --follow",
+        "logs:2018":"server log serverConfigFile=server-adobe@2018.json --follow",
+        "logs:2021":"server log serverConfigFile=server-adobe@2021.json --follow"
+    },
+    "testbox":{
+        "runner":"http://localhost:60299/tests/runner.cfm"
     }
 }

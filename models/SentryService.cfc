@@ -561,16 +561,16 @@ component accessors=true singleton {
 				thisStackItem.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
 			}
 
-			if ( errorLine <= fileLen ) {
+			if ( errorLine <= fileLen && fileLen > 0 && errorLine >= 1 ) {
 				thisStackItem[ "context_line" ] = fileArray[ errorLine ];
 			}
 
 			if ( fileLen >= errorLine + 1 ) {
 				var errorLine1 = errorLine + 1;
 
-				if (errorLine1 != 0) {
+				if ( errorLine1 != 0 ) {
 					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 ];
-				} else if (fileLen >= errorLine1 + 1) {
+				} else if ( fileLen >= errorLine1 + 1 ) {
 					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
 				}
 			}
@@ -578,9 +578,9 @@ component accessors=true singleton {
 			if ( fileLen >= errorLine + 2 ) {
 				var errorLine2 = errorLine + 2;
 
-				if (errorLine2 != 1) {
+				if ( errorLine2 != 1 ) {
 					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 ];
-				} else if (fileLen >= errorLine2 + 1) {
+				} else if ( fileLen >= errorLine2 + 1 ) {
 					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
 				}
 			}
@@ -672,6 +672,7 @@ component accessors=true singleton {
 		// If there is a closure to produce user info, call it
 		if ( isCustomFunction( userInfoUDF ) ) {
 			// Check for a non-ColdBox context
+			var traceParent = "";
 			if ( isNull( coldbox ) ) {
 				// Call the custon closure to produce user info
 				local.tmpUserInfo = userInfoUDF();
@@ -684,6 +685,19 @@ component accessors=true singleton {
 					event.getCollection(),
 					event.getPrivateCollection()
 				);
+			}
+
+			// Assemble any trace parent data
+			var traceParent = httpRequestData.headers.traceParent ?: "";
+			if ( !len( traceParent ) && !isNull( coldbox ) ) {
+				// Append any trace information which might be provided the `cbotel` module
+				var prc = coldbox
+					.getRequestService()
+					.getContext()
+					.getPrivateCollection();
+				if ( prc.keyExists( "openTelemetry" ) && isStruct( prc.openTelemetry ) ) {
+					traceParent = prc.openTelemetry.traceParent ?: "";
+				}
 			}
 
 			if ( !isNull( local.tmpUserInfo ) && isStruct( local.tmpUserInfo ) ) {
@@ -738,7 +752,7 @@ component accessors=true singleton {
 				cookie.map( function( k, v ){
 					return toString( v ); // Sentry requires all cookies be strings
 				} )
-			)
+			);
 		}
 
 		if ( variables.settings.sendPostData ) {
@@ -747,8 +761,15 @@ component accessors=true singleton {
 			} else {
 				arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields(
 					isJSON( httpRequestData.content ) ? deserializeJSON( httpRequestData.content ) : {}
-				)
+				);
 			}
+		}
+
+		// Announce an interception to allow other modules and listeners to modify the sentry request
+		if ( !isNull( coldbox ) ) {
+			coldbox
+				.getInterceptorService()
+				.announce( "onSentryEventCapture", { "event" : arguments.captureStruct } );
 		}
 
 		// serialize data
@@ -774,14 +795,21 @@ component accessors=true singleton {
 				sent_at     = timeVars.iso,
 				jsonCapture = jsonCapture
 			) {
-				post( header, event_id, sent_at, jsonCapture );
+				post(
+					header,
+					event_id,
+					sent_at,
+					jsonCapture,
+					traceParent
+				);
 			}
 		} else {
 			post(
 				header,
 				captureStruct.event_id,
 				timeVars.iso,
-				jsonCapture
+				jsonCapture,
+				traceParent
 			);
 		}
 	}
@@ -798,7 +826,8 @@ component accessors=true singleton {
 		required string header,
 		required string event_id,
 		required string sent_at,
-		required string json
+		required string json,
+		string traceParent = ""
 	){
 		var http     = {};
 		// send to sentry via REST API Call
@@ -839,6 +868,16 @@ component accessors=true singleton {
 				name  = "X-Sentry-Auth",
 				value = arguments.header
 			);
+
+			// Add our traceparent header if provided https://develop.sentry.dev/sdk/telemetry/traces/#header-traceparent
+			if ( len( arguments.traceparent ) ) {
+				cfhttpparam(
+					type  = "header",
+					name  = "traceparent",
+					value = arguments.traceparent
+				);
+			}
+
 			cfhttpparam( type = "body", value = httpBody );
 		}
 
@@ -998,7 +1037,7 @@ component accessors=true singleton {
 	/**
 	 * I return the http request data
 	 */
-	struct function getHTTPDataForRequest() {
+	struct function getHTTPDataForRequest(){
 		try {
 			var result = getHTTPRequestData();
 			if ( !isNull( result ) ) {
