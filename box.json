@@ -1,7 +1,7 @@
 {
     "name":"Sentry",
     "author":"Ortus Solutions <info@ortussolutions.com>",
-    "version":"2.1.0",
+    "version":"2.1.1",
     "slug":"sentry",
     "type":"modules",
     "homepage":"https://github.com/coldbox-modules/sentry",
@@ -32,7 +32,7 @@
         "*.md"
     ],
     "scripts":{
-		"build:module":"task run taskFile=build/Build.cfc :projectName=`package show slug` :version=`package show version`",
+        "build:module":"task run taskFile=build/Build.cfc :projectName=`package show slug` :version=`package show version`",
         "build:docs":"task run taskFile=build/Build.cfc target=docs :projectName=`package show slug` :version=`package show version`",
         "install:dependencies":"install --force && cd test-harness && install --force",
         "release":"recipe build/release.boxr",
