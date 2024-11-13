@@ -1,7 +1,7 @@
 {
     "name":"Sentry",
     "author":"Ortus Solutions <info@ortussolutions.com>",
-    "version":"2.1.1",
+    "version":"2.1.2",
     "slug":"sentry",
     "type":"modules",
     "homepage":"https://github.com/coldbox-modules/sentry",
