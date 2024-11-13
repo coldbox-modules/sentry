@@ -61,12 +61,15 @@ component accessors=true singleton {
 	 * Constructor
 	 */
 	function init( struct settings = {} ){
+		// make sure coldbox is a true null for Lucee
+		variables.coldbox = javacast( "null", 0 );
 		setSettings( arguments.settings );
 		// If we have settings passed to the init, this is likely not
 		// in WireBox context so just configure now
 		if ( arguments.settings.count() ) {
 			configure();
 		}
+
 		setModuleConfig( { version : "2.0.0" } );
 
 		return this;
