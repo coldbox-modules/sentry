@@ -138,12 +138,12 @@ component accessors=true singleton {
 				setSettings( wirebox.getInstance( dsl = "coldbox:moduleSettings:sentry" ) );
 				setModuleConfig( wirebox.getInstance( dsl = "coldbox:moduleConfig:sentry" ) );
 				// CommandBox supports generic box namespace
+				setColdBox( wirebox.getColdBox() );
 			} else {
 				setSettings( wirebox.getInstance( dsl = "box:moduleSettings:sentry" ) );
 
 				setModuleConfig( wirebox.getInstance( dsl = "box:moduleConfig:sentry" ) );
 			}
-			setColdBox( wirebox.getColdBox() );
 		}
 
 		configure();
