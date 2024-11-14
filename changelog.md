@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fixes for Coldbox being detected incorrectly.
 
+## [2.1.0] - 2024-11-12
+
 ### Added
 
 - Added support for passing through [`traceparent` headers](https://www.w3.org/TR/trace-context/#traceparent-header) and, optionally, traceparent data provided by [the `cbotel` module](https://forgebox.io/view/cbotel)
