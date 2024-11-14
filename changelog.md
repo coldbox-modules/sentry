@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2024-11-14
+
 ## [2.1.1] - 2024-11-13
 
 ## [2.1.0] - 2024-11-12
@@ -35,7 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Create first module version
 
-[Unreleased]: https://github.com/coldbox-modules/sentry/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/coldbox-modules/sentry/compare/v2.1.2...HEAD
+
+[2.1.2]: https://github.com/coldbox-modules/sentry/compare/v2.1.1...v2.1.2
 
 [2.1.1]: https://github.com/coldbox-modules/sentry/compare/v2.1.0...v2.1.1
 
