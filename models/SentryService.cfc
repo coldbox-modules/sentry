@@ -8,8 +8,9 @@
 component accessors=true singleton {
 
 	// DI
-	property name="wirebox"          inject="wirebox";
-	property name="functionLineNums" inject="functionLineNums@funclinenums";
+	property name="wirebox"            inject="wirebox";
+	property name="interceptorService" inject="box:InterceptorService";
+	property name="functionLineNums"   inject="functionLineNums@funclinenums";
 
 	property name="settings";
 	property name="moduleConfig";
@@ -137,13 +138,13 @@ component accessors=true singleton {
 			if ( wirebox.isColdBoxLinked() ) {
 				setSettings( wirebox.getInstance( dsl = "coldbox:moduleSettings:sentry" ) );
 				setModuleConfig( wirebox.getInstance( dsl = "coldbox:moduleConfig:sentry" ) );
-				// CommandBox supports generic box namespace
-				setColdBox( wirebox.getColdBox() );
 			} else {
+				// CommandBox supports generic box namespace
 				setSettings( wirebox.getInstance( dsl = "box:moduleSettings:sentry" ) );
-
 				setModuleConfig( wirebox.getInstance( dsl = "box:moduleConfig:sentry" ) );
 			}
+
+			setColdBox( wirebox.getColdBox() );
 		}
 
 		configure();
@@ -770,9 +771,7 @@ component accessors=true singleton {
 
 		// Announce an interception to allow other modules and listeners to modify the sentry request
 		if ( !isNull( coldbox ) ) {
-			coldbox
-				.getInterceptorService()
-				.announce( "onSentryEventCapture", { "event" : arguments.captureStruct } );
+			getInterceptorService().announce( "onSentryEventCapture", { "event" : arguments.captureStruct } );
 		}
 
 		// serialize data

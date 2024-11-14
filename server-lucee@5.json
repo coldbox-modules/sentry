@@ -1,5 +1,5 @@
 {
-    "name":"Coldbox Open Telementry Module-lucee@5",
+    "name":"Sentry-lucee@5",
     "app":{
         "serverHomeDirectory":".engine/lucee5",
         "cfengine":"lucee@5"

@@ -1,5 +1,5 @@
 {
-    "name":"Coldbox Open Telementry Module-adobe@2023",
+    "name":"Sentry-adobe@2023",
     "app":{
         "serverHomeDirectory":".engine/adobe2023",
         "cfengine":"adobe@2023"
