@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - [Issue #37](https://github.com/coldbox-modules/sentry/issues/37) - Resolves an ACF incompat issue where traceparent variable was not available in thread
+
 ## [2.1.3] - 2024-11-14
 
 ### Fixed
