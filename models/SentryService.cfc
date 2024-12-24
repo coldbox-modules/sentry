@@ -796,6 +796,7 @@ component accessors=true singleton {
 				event_id    = captureStruct.event_id,
 				sent_at     = timeVars.iso,
 				jsonCapture = jsonCapture
+				traceParent = traceParent
 			) {
 				post(
 					header,
