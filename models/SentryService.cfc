@@ -647,7 +647,7 @@ component accessors=true singleton {
 		var header          = "";
 		var timeVars        = getTimeVars();
 		var httpRequestData = getHTTPDataForRequest();
-		var traceParent = httpRequestData.headers.traceParent ?: "";
+		var traceParent     = httpRequestData.headers.traceParent ?: "";
 
 		// Add global metadata
 		arguments.captureStruct[ "event_id" ]    = lCase( replace( createUUID(), "-", "", "all" ) );
