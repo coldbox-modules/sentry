@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - [Issue #37](https://github.com/coldbox-modules/sentry/issues/37) - Fix var-scoping inside conditional
+
 ## [2.1.4] - 2024-12-24
 
 ### Fixed - [Issue #37](https://github.com/coldbox-modules/sentry/issues/37) - Resolves an ACF incompat issue where traceparent variable was not available in threaded logging

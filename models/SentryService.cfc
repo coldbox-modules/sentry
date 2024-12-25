@@ -647,6 +647,7 @@ component accessors=true singleton {
 		var header          = "";
 		var timeVars        = getTimeVars();
 		var httpRequestData = getHTTPDataForRequest();
+		var traceParent = httpRequestData.headers.traceParent ?: "";
 
 		// Add global metadata
 		arguments.captureStruct[ "event_id" ]    = lCase( replace( createUUID(), "-", "", "all" ) );
@@ -673,7 +674,6 @@ component accessors=true singleton {
 		var thisUserInfo = { "ip_address" : getRealIP() };
 
 		var userInfoUDF = getUserInfoUDF();
-		var traceParent = "";
 		// If there is a closure to produce user info, call it
 		if ( isCustomFunction( userInfoUDF ) ) {
 			// Check for a non-ColdBox context
@@ -691,8 +691,7 @@ component accessors=true singleton {
 				);
 			}
 
-			// Assemble any trace parent data
-			var traceParent = httpRequestData.headers.traceParent ?: "";
+			// Assemble any trace parent data from coldbox
 			if ( !len( traceParent ) && !isNull( coldbox ) ) {
 				// Append any trace information which might be provided the `cbotel` module
 				var prc = coldbox
