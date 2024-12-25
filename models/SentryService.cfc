@@ -673,10 +673,10 @@ component accessors=true singleton {
 		var thisUserInfo = { "ip_address" : getRealIP() };
 
 		var userInfoUDF = getUserInfoUDF();
+		var traceParent = "";
 		// If there is a closure to produce user info, call it
 		if ( isCustomFunction( userInfoUDF ) ) {
 			// Check for a non-ColdBox context
-			var traceParent = "";
 			if ( isNull( coldbox ) ) {
 				// Call the custon closure to produce user info
 				local.tmpUserInfo = userInfoUDF();
