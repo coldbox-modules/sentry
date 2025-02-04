@@ -35,6 +35,9 @@ jobs:
           - coldboxVersion: "be"
             cfengine: "adobe@2023"
             experimental: true
+          - coldboxVersion: "be"
+            cfengine: "boxlang@1"
+            experimental: true
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -53,6 +56,11 @@ jobs:
 
       - name: Setup CommandBox CLI
         uses: Ortus-Solutions/setup-commandbox@v2.0.1
+
+      - name: Update Commandbox Boxlang Module
+        if: ${{ matrix.cfengine == 'boxlang@1' }}
+        run:
+          box install --force commandbox-boxlang
 
       # Not Needed in this module
       #- name: Setup Environment For Testing Process
