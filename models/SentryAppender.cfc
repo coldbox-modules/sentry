@@ -48,11 +48,16 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true {
 				"detail"
 			)
 		) {
+			var additionalData = {};
+			if ( extraInfo.keyExists( "StackTrace" ) ) {
+				additionalData.stacktrace = extraInfo.StackTrace;
+			}
 			getProperty( "sentryService" ).captureException(
-				exception = extraInfo,
-				level     = level,
-				message   = message,
-				logger    = loggerCat
+				exception      = extraInfo,
+				level          = level,
+				message        = message,
+				logger         = loggerCat,
+				additionalData = additionalData
 			);
 		} else if (
 			( isStruct( extraInfo ) || isObject( extraInfo ) )
@@ -62,6 +67,9 @@ component extends="coldbox.system.logging.AbstractAppender" accessors=true {
 		) {
 			var trimmedExtra = structCopy( extraInfo );
 			trimmedExtra.delete( "exception" );
+			if ( extraInfo.exception.keyExists( "StackTrace" ) ) {
+				trimmedExtra.stacktrace = extraInfo.exception.StackTrace;
+			}
 
 			getProperty( "sentryService" ).captureException(
 				exception      = extraInfo.exception,
