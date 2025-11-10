@@ -73,7 +73,7 @@ component {
 			"platform"               : "cfml",
 			"logger"                 : ( !isNull( controller ) ? controller.getSetting( "appName" ) : "sentry" ),
 			"userInfoUDF"            : "",
-			"extraInfoUDFs"          : {},			// these two settings may be added but they
+			"extraInfoUDFs"          : {}, // these two settings may be added but they
 			"showJavaStackTrace"     : false,
 			"throwOnPostError"       : false
 		};
