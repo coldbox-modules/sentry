@@ -718,7 +718,9 @@ component accessors=true singleton {
 			if ( listFindNoCase( "id,email,ip_address,username", key ) ) {
 				key = lCase( key );
 			}
-			correctCasingUserInfo[ key ] = thisUserInfo[ key ];
+			if(!isNull(thisUserInfo[ key ])) {
+				correctCasingUserInfo[ key ] = thisUserInfo[ key ];
+			}
 		}
 
 		arguments.captureStruct[ "user" ] = correctCasingUserInfo;
