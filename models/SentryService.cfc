@@ -639,7 +639,7 @@ component accessors=true singleton {
 			}
 
 			// "Caused by: ..." — save current exception, start a new one
-			if ( left( trimmedLine, 9 ) == "Caused by" ) {
+			if ( left( trimmedLine, 10 ) == "Caused by:" ) {
 				// Flush previous exception
 				if ( len( curType ) ) {
 					arrayAppend(
@@ -663,7 +663,7 @@ component accessors=true singleton {
 			}
 
 			// "Suppressed: ..." — same handling as Caused by (Java 7+)
-			if ( left( trimmedLine, 10 ) == "Suppressed" ) {
+			if ( left( trimmedLine, 11 ) == "Suppressed:" ) {
 				// Flush previous exception
 				if ( len( curType ) ) {
 					arrayAppend(
@@ -700,17 +700,10 @@ component accessors=true singleton {
 					var parenContent = mid( afterAt, openParen + 1, closeParen - openParen - 1 );
 
 					// Split qualified name on last dot: "com.example.Class.method" → class + method
-					var lastDot = 0;
-					for ( var p = len( qualifiedName ); p >= 1; p-- ) {
-						if ( mid( qualifiedName, p, 1 ) == "." ) {
-							lastDot = p;
-							break;
-						}
-					}
-
-					if ( lastDot > 1 ) {
-						var atClass  = mid( qualifiedName, 1, lastDot - 1 );
-						var atMethod = mid( qualifiedName, lastDot + 1 );
+					var parts = listToArray( qualifiedName, "." );
+					var atMethod = parts[ parts.len() ];
+					parts.deleteAt( parts.len() );
+					var atClass = arrayToList( parts, "." );
 
 						// Parse paren content: "File.java:42" or "Native Method"
 						var colonInParen = find( ":", parenContent );
@@ -729,9 +722,8 @@ component accessors=true singleton {
 							);
 						}
 					}
-				}
-				continue;
-			}
+					continue;
+					}
 
 			// If we haven't hit any "at" lines yet, this is part of the exception header
 			if ( !inException ) {
