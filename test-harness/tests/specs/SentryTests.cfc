@@ -146,6 +146,220 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				var traceParent = service.$callLog( "post" ).post[ 1 ][ 5 ];
 				expect( traceParent ).toBe( testTraceParent );
 			} );
+
+			// ========== Java Stack Trace Parsing Tests ==========
+
+			it( "can parse a simple Java stack trace into exception values", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Something failed",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.NullPointerException: null object reference
+			at com.example.MyClass.myMethod(MyClass.java:42)
+			at com.example.MyClass.otherMethod(MyClass.java:100)
+			at org.apache.catalina.core.StandardWrapper.invoke(StandardWrapper.java:500)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload    = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues  = payload.exception.values;
+
+				// Should have 2 entries: BoxLang exception + Java exception
+				expect( excValues.len() ).toBe( 2 );
+
+				// First entry is the BoxLang CFML exception
+				expect( excValues[ 1 ].type ).toBe( "application Error" );
+				expect( excValues[ 1 ].stacktrace.frames.len() ).toBe( 0 );
+
+				// Second entry is the parsed Java exception
+				expect( excValues[ 2 ].type ).toBe( "java.lang.NullPointerException" );
+				expect( excValues[ 2 ].value ).toBe( "null object reference" );
+				expect( excValues[ 2 ].stacktrace.frames.len() ).toBe( 3 );
+
+				// Verify first frame parsing
+				var frame1 = excValues[ 2 ].stacktrace.frames[ 1 ];
+				expect( frame1.function ).toBe( "com.example.MyClass.myMethod" );
+				expect( frame1.filename ).toBe( "MyClass.java" );
+				expect( frame1.lineno ).toBe( 42 );
+				expect( frame1.abs_path ).toBe( "com.example.MyClass" );
+			} );
+
+			it( "marks application frames as in_app and framework frames as not", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Error",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.io.IOException: file not found
+			at com.example.service.FileHelper.read(FileHelper.java:55)
+			at org.apache.commons.io.IOUtils.toString(IOUtils.java:2000)
+			at java.io.FileInputStream.<init>(FileInputStream.java:138)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+				var frames    = excValues[ 2 ].stacktrace.frames;
+
+				// com.example = in_app
+				expect( frames[ 1 ].in_app ).toBe( true );
+				// org.apache.commons = not in_app
+				expect( frames[ 2 ].in_app ).toBe( false );
+				// java.io = not in_app
+				expect( frames[ 3 ].in_app ).toBe( false );
+			} );
+
+			it( "parses Native Method frames without line numbers", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Error",
+					"detail"     : "",
+					"type"       : "expression",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.NullPointerException
+			at java.io.FileInputStream.open0(Native Method)
+			at java.io.FileInputStream.open(FileInputStream.java:195)
+			at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var frames  = payload.exception.values[ 2 ].stacktrace.frames;
+
+				// Native Method frame — no line number
+				expect( frames[ 1 ].lineno ).toBe( 0 );
+				expect( frames[ 1 ].function ).toBe( "java.io.FileInputStream.open0" );
+				expect( frames[ 1 ].filename ).toBe( "" );
+
+				// Regular frame with line number
+				expect( frames[ 2 ].lineno ).toBe( 195 );
+				expect( frames[ 2 ].filename ).toBe( "FileInputStream.java" );
+			} );
+
+			it( "parses Caused by chains into multiple exception values", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Wrapper error",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.RuntimeException: something went wrong
+			at com.example.App.main(App.java:10)
+			Caused by: java.io.FileNotFoundException: /tmp/missing.txt
+			at java.io.FileInputStream.open0(Native Method)
+			at java.io.FileInputStream.<init>(FileInputStream.java:138)
+			... 3 more"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				// Should have 3 entries: BoxLang + RuntimeException + FileNotFoundException
+				expect( excValues.len() ).toBe( 3 );
+
+				// Second entry: RuntimeException
+				expect( excValues[ 2 ].type ).toBe( "java.lang.RuntimeException" );
+				expect( excValues[ 2 ].value ).toBe( "something went wrong" );
+				expect( excValues[ 2 ].stacktrace.frames.len() ).toBe( 1 );
+
+				// Third entry: FileNotFoundException
+				expect( excValues[ 3 ].type ).toBe( "java.io.FileNotFoundException" );
+				expect( excValues[ 3 ].value ).toBe( "/tmp/missing.txt" );
+				// "... 3 more" should be skipped, only 2 actual frames
+				expect( excValues[ 3 ].stacktrace.frames.len() ).toBe( 2 );
+			} );
+
+			it( "does not add Java stack trace entries when showJavaStackTrace is false", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Error",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [ { "TEMPLATE" : "/test.cfm", "LINE" : 1 } ],
+					"StackTrace" : "java.lang.RuntimeException: boom
+			at com.example.App.main(App.java:10)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = false );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				// Should only have 1 entry: BoxLang exception
+				expect( excValues.len() ).toBe( 1 );
+				expect( excValues[ 1 ].type ).toBe( "application Error" );
+			} );
+
+			it( "forces showJavaStackTrace when TagContext is empty", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Error",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.NullPointerException
+			at com.example.App.run(App.java:25)"
+				};
+
+				// Even with showJavaStackTrace defaulting to false,
+				// empty TagContext should force it on
+				service.captureException( exception = testException );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				expect( excValues.len() ).toBe( 2 );
+				expect( excValues[ 2 ].type ).toBe( "java.lang.NullPointerException" );
+			} );
+
+			it( "handles exception messages with no colon separator", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Error",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "NullPointerException
+			at com.example.App.run(App.java:25)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				expect( excValues.len() ).toBe( 2 );
+				expect( excValues[ 2 ].type ).toBe( "NullPointerException" );
+			} );
 		} );
 	}
 

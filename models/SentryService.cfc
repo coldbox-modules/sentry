@@ -344,8 +344,8 @@ component accessors=true singleton {
 	 * @level                      The level to log
 	 * @path                       The path to the script currently executing
 	 * @oneLineStackTrace          Set to true to render only 1 tag context. This is not the Java Stack Trace this is simply for the code output in Sentry
-	 * @showJavaStackTrace         Passes Java Stack Trace as a string to the extra attribute
-	 * @removeTabsOnJavaStackTrace Removes the tab on the child lines in the Stack Trace
+	 * @showJavaStackTrace When true, parses the Java stack trace and sends it as structured exception entries in exception.values with proper Sentry frames.
+	 * @removeTabsOnJavaStackTrace Deprecated — no longer needed. Kept for backward compatibility.
 	 * @additionalData             Additional metadata to store with the event - passed into the extra attribute
 	 * @cgiVars                    Parameters to send to Sentry, defaults to the CGI Scope
 	 * @useThread                  Option to send post to Sentry in its own thread
@@ -422,16 +422,8 @@ component accessors=true singleton {
 			sentryException.message = arguments.message & " " & sentryException.message;
 		}
 
-		if ( arguments.showJavaStackTrace ) {
-			st = reReplace(
-				arguments.exception.StackTrace,
-				"\r",
-				"",
-				"All"
-			);
-			if ( arguments.removeTabsOnJavaStackTrace ) st = reReplace( st, "\t", "", "All" );
-			sentryExceptionExtra[ "Java StackTrace" ] = listToArray( st, chr( 10 ) );
-		}
+		// Java stack trace is now sent as a structured exception entry in exception.values
+		// via parseJavaStackTrace() below, not as a raw text blob in extra.
 
 		if ( !isNull( arguments.additionalData ) ) {
 			sentryExceptionExtra[ "Additional Data" ] = arguments.additionalData;
@@ -507,10 +499,17 @@ component accessors=true singleton {
 			"type"       : arguments.exception.type & " Error",
 			"stacktrace" : { "frames" : [] }
 		};
-
 		sentryException[ "exception" ] = { "values" : [ currentException ] };
 
-
+		// If showJavaStackTrace is enabled, parse the Java stack trace and add it
+		// as a second (or more) entry in exception.values.  This gives Sentry proper
+		// structured frames for the Java side instead of a raw text blob in "extra".
+		if ( arguments.showJavaStackTrace && len( arguments.exception.StackTrace ) ) {
+			var javaExceptions = parseJavaStackTrace( arguments.exception.StackTrace );
+			for ( var je in javaExceptions ) {
+				arrayAppend( sentryException[ "exception" ].values, je );
+			}
+		}
 
 		/*
 		 * STACKTRACE INTERFACE
@@ -601,6 +600,180 @@ component accessors=true singleton {
 		);
 	}
 
+	/**
+	 * Parse a raw Java stack trace string into Sentry exception values.
+	 *
+	 * Handles the standard Java stack trace format including:
+	 *   - Exception class name and message on the first line(s)
+	 *   - "at package.Class.method(File.java:line)" frames
+	 *   - "at package.Class.method(Native Method)" frames
+	 *   - "... N more" truncated frame indicators
+	 *   - "Caused by:" nested exception chains
+	 *
+	 * Returns an array of Sentry exception value structs, each with:
+	 *   - type:    The Java exception class name
+	 *   - value:   The exception message
+	 *   - stacktrace: { frames: [...] }  with parsed frame objects
+	 */
+	private array function parseJavaStackTrace( required string stackTrace ){
+		var result    = [];
+		var lines     = listToArray( arguments.stackTrace, chr( 10 ) );
+		var curType   = "";
+		var curValue  = "";
+		var curFrames = [];
+		var inException = false;
+
+		// Regex for "at com.example.Class.method(File.java:42)"
+		// Note: (.+) for class is GREEDY to match the full qualified name up to the last dot before (
+		var atPattern     = "^\\s*at\\s+(.+)\\.(.+?)\\((.+?):(\\d+)\\)$";
+		// Regex for "at com.example.Class.method(Native Method)" or "(Unknown Source)"
+		var atNoLinePat   = "^\\s*at\\s+(.+)\\.(.+?)\\((.+?)\\)$";
+		// Regex for "Caused by: java.lang.Exception: message" (message is optional)
+		var causedByPat   = "^\\s*Caused by:\\s+(.+?)(?:\\s*:\\s*(.*))?$";
+		// Regex for initial exception line "java.lang.Exception: message"
+		var exceptionPat  = "^(.+?):\\s*(.*)$";
+		// Regex for "... N more" lines
+		var morePat       = "^\\s*\\.\\.\\.\\s+\\d+\\s+more\\s*$";
+
+		for ( var line in lines ) {
+			// Skip blank lines
+			if ( !len( trim( line ) ) ) {
+				continue;
+			}
+
+			// "... N more" — skip, these are duplicated frames
+			if ( reFind( morePat, line ) ) {
+				continue;
+			}
+
+			// "Caused by: ..." — save current exception, start a new one
+			var causedByMatch = reFind( causedByPat, line, 1, true );
+			if ( causedByMatch.len[ 1 ] ) {
+				// Flush previous exception
+				if ( len( curType ) ) {
+					arrayAppend(
+						result,
+						_buildJavaExceptionValue( curType, curValue, curFrames )
+					);
+				}
+				curType   = trim( mid( line, causedByMatch.pos[ 2 ], causedByMatch.len[ 2 ] ) );
+				curValue  = trim( mid( line, causedByMatch.pos[ 3 ], causedByMatch.len[ 3 ] ) );
+				curFrames = [];
+				inException = true;
+				continue;
+			}
+
+			// "at ..." frame line
+			var atMatch = reFind( atPattern, line, 1, true );
+			if ( atMatch.len[ 1 ] ) {
+				inException = true;
+				var atClass  = mid( line, atMatch.pos[ 2 ], atMatch.len[ 2 ] );
+				var atMethod = mid( line, atMatch.pos[ 3 ], atMatch.len[ 3 ] );
+				var atFile   = mid( line, atMatch.pos[ 4 ], atMatch.len[ 4 ] );
+				var atLine   = val( mid( line, atMatch.pos[ 5 ], atMatch.len[ 5 ] ) );
+
+				arrayAppend(
+					curFrames,
+					_buildJavaFrame( atClass, atMethod, atFile, atLine )
+				);
+				continue;
+			}
+
+			// "at ..." frame without line number (Native Method, Unknown Source)
+			var atNoLineMatch = reFind( atNoLinePat, line, 1, true );
+			if ( atNoLineMatch.len[ 1 ] ) {
+				inException = true;
+				var atClass2  = mid( line, atNoLineMatch.pos[ 2 ], atNoLineMatch.len[ 2 ] );
+				var atMethod2 = mid( line, atNoLineMatch.pos[ 3 ], atNoLineMatch.len[ 3 ] );
+
+				arrayAppend(
+					curFrames,
+					_buildJavaFrame( atClass2, atMethod2, "", 0 )
+				);
+				continue;
+			}
+
+			// If we haven't hit any "at" lines yet, this is part of the exception header
+			if ( !inException ) {
+				var exMatch = reFind( exceptionPat, line, 1, true );
+				if ( exMatch.len[ 1 ] ) {
+					curType  = trim( mid( line, exMatch.pos[ 2 ], exMatch.len[ 2 ] ) );
+					curValue = trim( mid( line, exMatch.pos[ 3 ], exMatch.len[ 3 ] ) );
+				} else if ( !len( curType ) ) {
+					// First line might just be the exception class
+					curType = trim( line );
+				} else {
+					// Continuation of the message
+					curValue &= " " & trim( line );
+				}
+			}
+		}
+
+		// Flush the last exception
+		if ( len( curType ) ) {
+			arrayAppend(
+				result,
+				_buildJavaExceptionValue( curType, curValue, curFrames )
+			);
+		}
+
+		return result;
+	}
+
+	/**
+	 * Build a single Sentry exception value struct for a Java exception.
+	 */
+	private struct function _buildJavaExceptionValue(
+		required string type,
+		required string value,
+		required array frames
+	){
+		return {
+			"type"       : arguments.type,
+			"value"      : arguments.value,
+			"stacktrace" : { "frames" : arguments.frames }
+		};
+	}
+
+	/**
+	 * Build a single Sentry stacktrace frame from a Java "at" line.
+	 *
+	 * @className  Fully qualified class name (e.g. "com.example.MyClass")
+	 * @method     Method name (e.g. "myMethod")
+	 * @fileName   Source file name (e.g. "MyClass.java"), may be empty
+	 * @lineNumber Line number, 0 if unknown
+	 */
+	private struct function _buildJavaFrame(
+		required string className,
+		required string method,
+		required string fileName,
+		required numeric lineNumber
+	){
+		var frame = {
+			"function"     : arguments.className & "." & arguments.method,
+			"filename"     : arguments.fileName,
+			"lineno"       : arguments.lineNumber,
+			"abs_path"     : arguments.className,
+			"in_app"       : false,
+			"context_line" : "",
+			"pre_context"  : [],
+			"post_context" : []
+		};
+
+		// Heuristic: if the class doesn't start with common framework prefixes,
+		// it's probably application code
+		if (
+			!reFindNoCase(
+				"^(java\\.|javax\\.|sun\\.|com\\.sun\\.|org\\.apache\\.|org\\.springframework\\.|org\\.hibernate\\.|lucee\\.|boxlang\\.)",
+				arguments.className
+			)
+		) {
+			frame[ "in_app" ] = true;
+		}
+
+		return frame;
+	}
+
 	// recursivley replace any CFC instances with structs
 	function structifyObject( o, name = "" ){
 		var result = {};
@@ -611,7 +784,9 @@ component accessors=true singleton {
 		return structReduce(
 			o,
 			function( acc, k, v ){
-				if ( !isCustomFunction( v ) ) {
+						if ( isNull( arguments.v ) ) {
+							acc[ k ] = javacast( "null", 0 );
+						} else if ( !isCustomFunction( v ) ) {
 					if ( isObject( v ) ) {
 						acc[ k ] = structifyObject( v, getMetadata( v ).name );
 					} else if ( isStruct( v ) ) {
