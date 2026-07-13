@@ -46,7 +46,7 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				try {
 					foo = createObject( "java", "java.io.File" ).init( getNull() );
 				} catch ( any e ) {
-					getLogbox().getRootLogger().error( e.message, e );
+					getLogbox().getRootLogger().error( e.message ?: "Java exception", e );
 				}
 			} );
 
@@ -54,12 +54,8 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				try {
 					throw( "Missing tag Context" );
 				} catch ( any e ) {
-					var newE = {};
-					for ( var key in e ) {
-						if ( key != "TagContext" ) {
-							newE[ key ] = e[ key ];
-						}
-					}
+					var newE = duplicate( e );
+					structDelete( newE, "TagContext" );
 					getLogbox().getRootLogger().error( "Missing tag Context", newE );
 				}
 			} );
