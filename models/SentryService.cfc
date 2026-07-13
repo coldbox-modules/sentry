@@ -344,7 +344,7 @@ component accessors=true singleton {
 	 * @level                      The level to log
 	 * @path                       The path to the script currently executing
 	 * @oneLineStackTrace          Set to true to render only 1 tag context. This is not the Java Stack Trace this is simply for the code output in Sentry
-	 * @showJavaStackTrace When true, parses the Java stack trace and sends it as structured exception entries in exception.values with proper Sentry frames.
+	 * @showJavaStackTrace         When true, parses the Java stack trace and sends it as structured exception entries in exception.values with proper Sentry frames.
 	 * @removeTabsOnJavaStackTrace Deprecated — no longer needed. Kept for backward compatibility.
 	 * @additionalData             Additional metadata to store with the event - passed into the extra attribute
 	 * @cgiVars                    Parameters to send to Sentry, defaults to the CGI Scope
@@ -616,13 +616,13 @@ component accessors=true singleton {
 	 *   - stacktrace: { frames: [...] }  with parsed frame objects
 	 */
 	private array function parseJavaStackTrace( required string stackTrace ){
-		var result    = [];
+		var result      = [];
 		// Strip \r to handle Windows-style line endings consistently
-		var cleaned   = reReplace( arguments.stackTrace, "\\r", "", "All" );
-		var lines     = listToArray( cleaned, chr( 10 ) );
-		var curType   = "";
-		var curValue  = "";
-		var curFrames = [];
+		var cleaned     = reReplace( arguments.stackTrace, "\\r", "", "All" );
+		var lines       = listToArray( cleaned, chr( 10 ) );
+		var curType     = "";
+		var curValue    = "";
+		var curFrames   = [];
 		var inException = false;
 
 		for ( var line in lines ) {
@@ -642,14 +642,11 @@ component accessors=true singleton {
 			if ( left( trimmedLine, 10 ) == "Caused by:" ) {
 				// Flush previous exception
 				if ( len( curType ) ) {
-					arrayAppend(
-						result,
-						_buildJavaExceptionValue( curType, curValue, curFrames )
-					);
+					arrayAppend( result, _buildJavaExceptionValue( curType, curValue, curFrames ) );
 				}
 				// Parse: "Caused by: java.lang.Exception: message"
 				var afterPrefix = trim( mid( trimmedLine, 11 ) ); // skip "Caused by:"
-				var colonPos = find( ":", afterPrefix );
+				var colonPos    = find( ":", afterPrefix );
 				if ( colonPos > 1 ) {
 					curType  = trim( mid( afterPrefix, 1, colonPos - 1 ) );
 					curValue = trim( mid( afterPrefix, colonPos + 1 ) );
@@ -657,7 +654,7 @@ component accessors=true singleton {
 					curType  = afterPrefix;
 					curValue = "";
 				}
-				curFrames = [];
+				curFrames   = [];
 				inException = true;
 				continue;
 			}
@@ -666,14 +663,11 @@ component accessors=true singleton {
 			if ( left( trimmedLine, 11 ) == "Suppressed:" ) {
 				// Flush previous exception
 				if ( len( curType ) ) {
-					arrayAppend(
-						result,
-						_buildJavaExceptionValue( curType, curValue, curFrames )
-					);
+					arrayAppend( result, _buildJavaExceptionValue( curType, curValue, curFrames ) );
 				}
 				// Parse: "Suppressed: java.lang.Exception: message"
 				var afterSuppressed = trim( mid( trimmedLine, 12 ) ); // skip "Suppressed:"
-				var colonPos2 = find( ":", afterSuppressed );
+				var colonPos2       = find( ":", afterSuppressed );
 				if ( colonPos2 > 1 ) {
 					curType  = trim( mid( afterSuppressed, 1, colonPos2 - 1 ) );
 					curValue = trim( mid( afterSuppressed, colonPos2 + 1 ) );
@@ -681,49 +675,47 @@ component accessors=true singleton {
 					curType  = afterSuppressed;
 					curValue = "";
 				}
-				curFrames = [];
+				curFrames   = [];
 				inException = true;
 				continue;
 			}
 
 			// "at ..." frame line
 			if ( left( trimmedLine, 3 ) == "at " ) {
-				inException = true;
+				inException    = true;
 				// Parse: "at com.example.Class.method(File.java:42)"
 				// or:   "at com.example.Class.method(Native Method)"
-				var afterAt = mid( trimmedLine, 4 ); // skip "at "
-				var openParen = find( "(", afterAt );
+				var afterAt    = mid( trimmedLine, 4 ); // skip "at "
+				var openParen  = find( "(", afterAt );
 				var closeParen = find( ")", afterAt );
 
 				if ( openParen > 1 && closeParen > openParen ) {
 					var qualifiedName = mid( afterAt, 1, openParen - 1 );
-					var parenContent = mid( afterAt, openParen + 1, closeParen - openParen - 1 );
+					var parenContent  = mid(
+						afterAt,
+						openParen + 1,
+						closeParen - openParen - 1
+					);
 
 					// Split qualified name on last dot: "com.example.Class.method" → class + method
-					var parts = listToArray( qualifiedName, "." );
+					var parts    = listToArray( qualifiedName, "." );
 					var atMethod = parts[ parts.len() ];
 					parts.deleteAt( parts.len() );
 					var atClass = arrayToList( parts, "." );
 
-						// Parse paren content: "File.java:42" or "Native Method"
-						var colonInParen = find( ":", parenContent );
-						if ( colonInParen > 1 ) {
-							var atFile = mid( parenContent, 1, colonInParen - 1 );
-							var atLine = val( mid( parenContent, colonInParen + 1 ) );
-							arrayAppend(
-								curFrames,
-								_buildJavaFrame( atClass, atMethod, atFile, atLine )
-							);
-						} else {
-							// Native Method, Unknown Source, etc.
-							arrayAppend(
-								curFrames,
-								_buildJavaFrame( atClass, atMethod, "", 0 )
-							);
-						}
+					// Parse paren content: "File.java:42" or "Native Method"
+					var colonInParen = find( ":", parenContent );
+					if ( colonInParen > 1 ) {
+						var atFile = mid( parenContent, 1, colonInParen - 1 );
+						var atLine = val( mid( parenContent, colonInParen + 1 ) );
+						arrayAppend( curFrames, _buildJavaFrame( atClass, atMethod, atFile, atLine ) );
+					} else {
+						// Native Method, Unknown Source, etc.
+						arrayAppend( curFrames, _buildJavaFrame( atClass, atMethod, "", 0 ) );
 					}
-					continue;
-					}
+				}
+				continue;
+			}
 
 			// If we haven't hit any "at" lines yet, this is part of the exception header
 			if ( !inException ) {
@@ -750,10 +742,7 @@ component accessors=true singleton {
 
 		// Flush the last exception
 		if ( len( curType ) ) {
-			arrayAppend(
-				result,
-				_buildJavaExceptionValue( curType, curValue, curFrames )
-			);
+			arrayAppend( result, _buildJavaExceptionValue( curType, curValue, curFrames ) );
 		}
 
 		return result;
@@ -802,9 +791,16 @@ component accessors=true singleton {
 		// Heuristic: if the class doesn't start with common framework prefixes,
 		// it's probably application code
 		var frameworkPrefixes = [
-			"java.", "javax.", "jakarta.", "sun.", "com.sun.",
-			"org.apache.", "org.springframework.", "org.hibernate.",
-			"lucee.", "boxlang."
+			"java.",
+			"javax.",
+			"jakarta.",
+			"sun.",
+			"com.sun.",
+			"org.apache.",
+			"org.springframework.",
+			"org.hibernate.",
+			"lucee.",
+			"boxlang."
 		];
 		var isFramework = false;
 		for ( var prefix in frameworkPrefixes ) {
@@ -830,9 +826,9 @@ component accessors=true singleton {
 		return structReduce(
 			o,
 			function( acc, k, v ){
-						if ( isNull( arguments.v ) ) {
-							acc[ k ] = javacast( "null", 0 );
-						} else if ( !isCustomFunction( v ) ) {
+				if ( isNull( arguments.v ) ) {
+					acc[ k ] = javacast( "null", 0 );
+				} else if ( !isCustomFunction( v ) ) {
 					if ( isObject( v ) ) {
 						acc[ k ] = structifyObject( v, getMetadata( v ).name );
 					} else if ( isStruct( v ) ) {

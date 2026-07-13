@@ -163,8 +163,8 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 
 				service.captureException( exception = testException, showJavaStackTrace = true );
 
-				var payload    = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
-				var excValues  = payload.exception.values;
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
 
 				// Should have 2 entries: BoxLang exception + Java exception
 				expect( excValues.len() ).toBe( 2 );
