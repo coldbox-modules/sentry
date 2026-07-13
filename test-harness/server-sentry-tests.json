@@ -1,0 +1,11 @@
+{
+    "app":{
+        "cfengine":"boxlang"
+    },
+    "name":"sentry-tests",
+    "web":{
+        "http":{
+            "port":"8599"
+        }
+    }
+}

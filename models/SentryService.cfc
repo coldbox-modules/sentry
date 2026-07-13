@@ -625,34 +625,21 @@ component accessors=true singleton {
 		var curFrames = [];
 		var inException = false;
 
-		// Regex for "at com.example.Class.method(File.java:42)"
-		// Note: (.+) for class is GREEDY to match the full qualified name up to the last dot before (
-		var atPattern     = "^\\s*at\\s+(.+)\\.(.+?)\\((.+?):(\\d+)\\)$";
-		// Regex for "at com.example.Class.method(Native Method)" or "(Unknown Source)"
-		var atNoLinePat   = "^\\s*at\\s+(.+)\\.(.+?)\\((.+?)\\)$";
-		// Regex for "Caused by: java.lang.Exception: message" (message is optional)
-		var causedByPat   = "^\\s*Caused by:\\s+(.+?)(?:\\s*:\\s*(.*))?$";
-		// Regex for "Suppressed: java.lang.Exception: message" (Java 7+)
-		var suppressedPat = "^\\s*Suppressed:\\s+(.+?)(?:\\s*:\\s*(.*))?$";
-		// Regex for initial exception line "java.lang.Exception: message"
-		var exceptionPat  = "^(.+?):\\s*(.*)$";
-		// Regex for "... N more" lines
-		var morePat       = "^\\s*\\.\\.\\.\\s+\\d+\\s+more\\s*$";
-
 		for ( var line in lines ) {
 			// Skip blank lines
 			if ( !len( trim( line ) ) ) {
 				continue;
 			}
 
+			var trimmedLine = trim( line );
+
 			// "... N more" — skip, these are duplicated frames
-			if ( reFind( morePat, line ) ) {
+			if ( left( trimmedLine, 3 ) == "..." && reFind( "^\\.\\.\\.\\s+\\d+\\s+more", trimmedLine ) ) {
 				continue;
 			}
 
 			// "Caused by: ..." — save current exception, start a new one
-			var causedByMatch = reFind( causedByPat, line, 1, true );
-			if ( causedByMatch.len[ 1 ] ) {
+			if ( left( trimmedLine, 9 ) == "Caused by" ) {
 				// Flush previous exception
 				if ( len( curType ) ) {
 					arrayAppend(
@@ -660,16 +647,23 @@ component accessors=true singleton {
 						_buildJavaExceptionValue( curType, curValue, curFrames )
 					);
 				}
-				curType   = trim( mid( line, causedByMatch.pos[ 2 ], causedByMatch.len[ 2 ] ) );
-				curValue  = trim( mid( line, causedByMatch.pos[ 3 ], causedByMatch.len[ 3 ] ) );
+				// Parse: "Caused by: java.lang.Exception: message"
+				var afterPrefix = trim( mid( trimmedLine, 11 ) ); // skip "Caused by:"
+				var colonPos = find( ":", afterPrefix );
+				if ( colonPos > 1 ) {
+					curType  = trim( mid( afterPrefix, 1, colonPos - 1 ) );
+					curValue = trim( mid( afterPrefix, colonPos + 1 ) );
+				} else {
+					curType  = afterPrefix;
+					curValue = "";
+				}
 				curFrames = [];
 				inException = true;
 				continue;
 			}
 
 			// "Suppressed: ..." — same handling as Caused by (Java 7+)
-			var suppressedMatch = reFind( suppressedPat, line, 1, true );
-			if ( suppressedMatch.len[ 1 ] ) {
+			if ( left( trimmedLine, 10 ) == "Suppressed" ) {
 				// Flush previous exception
 				if ( len( curType ) ) {
 					arrayAppend(
@@ -677,55 +671,87 @@ component accessors=true singleton {
 						_buildJavaExceptionValue( curType, curValue, curFrames )
 					);
 				}
-				curType   = trim( mid( line, suppressedMatch.pos[ 2 ], suppressedMatch.len[ 2 ] ) );
-				curValue  = trim( mid( line, suppressedMatch.pos[ 3 ], suppressedMatch.len[ 3 ] ) );
+				// Parse: "Suppressed: java.lang.Exception: message"
+				var afterSuppressed = trim( mid( trimmedLine, 12 ) ); // skip "Suppressed:"
+				var colonPos2 = find( ":", afterSuppressed );
+				if ( colonPos2 > 1 ) {
+					curType  = trim( mid( afterSuppressed, 1, colonPos2 - 1 ) );
+					curValue = trim( mid( afterSuppressed, colonPos2 + 1 ) );
+				} else {
+					curType  = afterSuppressed;
+					curValue = "";
+				}
 				curFrames = [];
 				inException = true;
 				continue;
 			}
 
 			// "at ..." frame line
-			var atMatch = reFind( atPattern, line, 1, true );
-			if ( atMatch.len[ 1 ] ) {
+			if ( left( trimmedLine, 3 ) == "at " ) {
 				inException = true;
-				var atClass  = mid( line, atMatch.pos[ 2 ], atMatch.len[ 2 ] );
-				var atMethod = mid( line, atMatch.pos[ 3 ], atMatch.len[ 3 ] );
-				var atFile   = mid( line, atMatch.pos[ 4 ], atMatch.len[ 4 ] );
-				var atLine   = val( mid( line, atMatch.pos[ 5 ], atMatch.len[ 5 ] ) );
+				// Parse: "at com.example.Class.method(File.java:42)"
+				// or:   "at com.example.Class.method(Native Method)"
+				var afterAt = mid( trimmedLine, 4 ); // skip "at "
+				var openParen = find( "(", afterAt );
+				var closeParen = find( ")", afterAt );
 
-				arrayAppend(
-					curFrames,
-					_buildJavaFrame( atClass, atMethod, atFile, atLine )
-				);
-				continue;
-			}
+				if ( openParen > 1 && closeParen > openParen ) {
+					var qualifiedName = mid( afterAt, 1, openParen - 1 );
+					var parenContent = mid( afterAt, openParen + 1, closeParen - openParen - 1 );
 
-			// "at ..." frame without line number (Native Method, Unknown Source)
-			var atNoLineMatch = reFind( atNoLinePat, line, 1, true );
-			if ( atNoLineMatch.len[ 1 ] ) {
-				inException = true;
-				var atClass2  = mid( line, atNoLineMatch.pos[ 2 ], atNoLineMatch.len[ 2 ] );
-				var atMethod2 = mid( line, atNoLineMatch.pos[ 3 ], atNoLineMatch.len[ 3 ] );
+					// Split qualified name on last dot: "com.example.Class.method" → class + method
+					var lastDot = 0;
+					for ( var p = len( qualifiedName ); p >= 1; p-- ) {
+						if ( mid( qualifiedName, p, 1 ) == "." ) {
+							lastDot = p;
+							break;
+						}
+					}
 
-				arrayAppend(
-					curFrames,
-					_buildJavaFrame( atClass2, atMethod2, "", 0 )
-				);
+					if ( lastDot > 1 ) {
+						var atClass  = mid( qualifiedName, 1, lastDot - 1 );
+						var atMethod = mid( qualifiedName, lastDot + 1 );
+
+						// Parse paren content: "File.java:42" or "Native Method"
+						var colonInParen = find( ":", parenContent );
+						if ( colonInParen > 1 ) {
+							var atFile = mid( parenContent, 1, colonInParen - 1 );
+							var atLine = val( mid( parenContent, colonInParen + 1 ) );
+							arrayAppend(
+								curFrames,
+								_buildJavaFrame( atClass, atMethod, atFile, atLine )
+							);
+						} else {
+							// Native Method, Unknown Source, etc.
+							arrayAppend(
+								curFrames,
+								_buildJavaFrame( atClass, atMethod, "", 0 )
+							);
+						}
+					}
+				}
 				continue;
 			}
 
 			// If we haven't hit any "at" lines yet, this is part of the exception header
 			if ( !inException ) {
-				var exMatch = reFind( exceptionPat, line, 1, true );
-				if ( exMatch.len[ 1 ] ) {
-					curType  = trim( mid( line, exMatch.pos[ 2 ], exMatch.len[ 2 ] ) );
-					curValue = trim( mid( line, exMatch.pos[ 3 ], exMatch.len[ 3 ] ) );
+				var colonPos3 = find( ":", trimmedLine );
+				if ( colonPos3 > 1 ) {
+					// Check if it looks like an exception class name (no spaces before colon)
+					var beforeColon = mid( trimmedLine, 1, colonPos3 - 1 );
+					if ( !find( " ", beforeColon ) ) {
+						curType  = beforeColon;
+						curValue = trim( mid( trimmedLine, colonPos3 + 1 ) );
+					} else {
+						// Space before colon — probably a continuation of the message
+						curValue = curValue & " " & trimmedLine;
+					}
 				} else if ( !len( curType ) ) {
 					// First line might just be the exception class
-					curType = trim( line );
+					curType = trimmedLine;
 				} else {
 					// Continuation of the message
-					curValue &= " " & trim( line );
+					curValue = curValue & " " & trimmedLine;
 				}
 			}
 		}
