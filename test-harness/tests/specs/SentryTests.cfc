@@ -360,6 +360,38 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				expect( excValues.len() ).toBe( 2 );
 				expect( excValues[ 2 ].type ).toBe( "NullPointerException" );
 			} );
+
+			it( "parses Suppressed exceptions into separate values", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Error",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.io.IOException: original error
+	at com.example.App.main(App.java:10)
+	Suppressed: java.io.IOException: suppressed error
+	at com.example.App.helper(App.java:20)
+	... 1 more"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				// BoxLang + original IOException + suppressed IOException
+				expect( excValues.len() ).toBe( 3 );
+				expect( excValues[ 2 ].type ).toBe( "java.io.IOException" );
+				expect( excValues[ 2 ].value ).toBe( "original error" );
+				expect( excValues[ 2 ].stacktrace.frames.len() ).toBe( 1 );
+				expect( excValues[ 3 ].type ).toBe( "java.io.IOException" );
+				expect( excValues[ 3 ].value ).toBe( "suppressed error" );
+				expect( excValues[ 3 ].stacktrace.frames.len() ).toBe( 1 );
+			} );
 		} );
 	}
 
