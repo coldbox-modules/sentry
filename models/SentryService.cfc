@@ -809,12 +809,19 @@ component accessors=true singleton {
 
 		// Heuristic: if the class doesn't start with common framework prefixes,
 		// it's probably application code
-		if (
-			!reFindNoCase(
-				"^(java\\.|javax\\.|jakarta\\.|sun\\.|com\\.sun\\.|org\\.apache\\.|org\\.springframework\\.|org\\.hibernate\\.|lucee\\.|boxlang\\.)",
-				arguments.className
-			)
-		) {
+		var frameworkPrefixes = [
+			"java.", "javax.", "jakarta.", "sun.", "com.sun.",
+			"org.apache.", "org.springframework.", "org.hibernate.",
+			"lucee.", "boxlang."
+		];
+		var isFramework = false;
+		for ( var prefix in frameworkPrefixes ) {
+			if ( left( arguments.className, len( prefix ) ) == prefix ) {
+				isFramework = true;
+				break;
+			}
+		}
+		if ( !isFramework ) {
 			frame[ "in_app" ] = true;
 		}
 
