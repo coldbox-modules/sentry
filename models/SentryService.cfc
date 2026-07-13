@@ -617,7 +617,9 @@ component accessors=true singleton {
 	 */
 	private array function parseJavaStackTrace( required string stackTrace ){
 		var result    = [];
-		var lines     = listToArray( arguments.stackTrace, chr( 10 ) );
+		// Strip \r to handle Windows-style line endings consistently
+		var cleaned   = reReplace( arguments.stackTrace, "\\r", "", "All" );
+		var lines     = listToArray( cleaned, chr( 10 ) );
 		var curType   = "";
 		var curValue  = "";
 		var curFrames = [];
@@ -630,6 +632,8 @@ component accessors=true singleton {
 		var atNoLinePat   = "^\\s*at\\s+(.+)\\.(.+?)\\((.+?)\\)$";
 		// Regex for "Caused by: java.lang.Exception: message" (message is optional)
 		var causedByPat   = "^\\s*Caused by:\\s+(.+?)(?:\\s*:\\s*(.*))?$";
+		// Regex for "Suppressed: java.lang.Exception: message" (Java 7+)
+		var suppressedPat = "^\\s*Suppressed:\\s+(.+?)(?:\\s*:\\s*(.*))?$";
 		// Regex for initial exception line "java.lang.Exception: message"
 		var exceptionPat  = "^(.+?):\\s*(.*)$";
 		// Regex for "... N more" lines
@@ -658,6 +662,23 @@ component accessors=true singleton {
 				}
 				curType   = trim( mid( line, causedByMatch.pos[ 2 ], causedByMatch.len[ 2 ] ) );
 				curValue  = trim( mid( line, causedByMatch.pos[ 3 ], causedByMatch.len[ 3 ] ) );
+				curFrames = [];
+				inException = true;
+				continue;
+			}
+
+			// "Suppressed: ..." — same handling as Caused by (Java 7+)
+			var suppressedMatch = reFind( suppressedPat, line, 1, true );
+			if ( suppressedMatch.len[ 1 ] ) {
+				// Flush previous exception
+				if ( len( curType ) ) {
+					arrayAppend(
+						result,
+						_buildJavaExceptionValue( curType, curValue, curFrames )
+					);
+				}
+				curType   = trim( mid( line, suppressedMatch.pos[ 2 ], suppressedMatch.len[ 2 ] ) );
+				curValue  = trim( mid( line, suppressedMatch.pos[ 3 ], suppressedMatch.len[ 3 ] ) );
 				curFrames = [];
 				inException = true;
 				continue;
@@ -764,7 +785,7 @@ component accessors=true singleton {
 		// it's probably application code
 		if (
 			!reFindNoCase(
-				"^(java\\.|javax\\.|sun\\.|com\\.sun\\.|org\\.apache\\.|org\\.springframework\\.|org\\.hibernate\\.|lucee\\.|boxlang\\.)",
+				"^(java\\.|javax\\.|jakarta\\.|sun\\.|com\\.sun\\.|org\\.apache\\.|org\\.springframework\\.|org\\.hibernate\\.|lucee\\.|boxlang\\.)",
 				arguments.className
 			)
 		) {
