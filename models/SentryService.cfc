@@ -501,10 +501,11 @@ component accessors=true singleton {
 		};
 		sentryException[ "exception" ] = { "values" : [ currentException ] };
 
-		// If showJavaStackTrace is enabled, parse the Java stack trace and add it
-		// as a second (or more) entry in exception.values.  This gives Sentry proper
-		// structured frames for the Java side instead of a raw text blob in "extra".
-		if ( arguments.showJavaStackTrace && len( arguments.exception.StackTrace ) ) {
+			// If showJavaStackTrace is enabled AND there's no tagContext, parse the
+			// Java stack trace and add it as a second (or more) entry in exception.values.
+			// When tagContext is available, the CFML frames are sufficient — no need
+			// for the overhead of parsing the raw Java stack trace.
+			if ( arguments.showJavaStackTrace && !tagContext.len() && len( arguments.exception.StackTrace ) ) {
 			var javaExceptions = parseJavaStackTrace( arguments.exception.StackTrace );
 			for ( var je in javaExceptions ) {
 				arrayAppend( sentryException[ "exception" ].values, je );
@@ -638,45 +639,18 @@ component accessors=true singleton {
 				continue;
 			}
 
-			// "Caused by: ..." — save current exception, start a new one
-			if ( left( trimmedLine, 10 ) == "Caused by:" ) {
+			// "Caused by: ..." or "Suppressed: ..." — save current exception, start a new one
+			if ( left( trimmedLine, 10 ) == "Caused by:" || left( trimmedLine, 11 ) == "Suppressed:" ) {
 				// Flush previous exception
 				if ( len( curType ) ) {
 					arrayAppend( result, _buildJavaExceptionValue( curType, curValue, curFrames ) );
 				}
-				// Parse: "Caused by: java.lang.Exception: message"
-				var afterPrefix = trim( mid( trimmedLine, 11 ) ); // skip "Caused by:"
-				var colonPos    = find( ":", afterPrefix );
-				if ( colonPos > 1 ) {
-					curType  = trim( mid( afterPrefix, 1, colonPos - 1 ) );
-					curValue = trim( mid( afterPrefix, colonPos + 1 ) );
-				} else {
-					curType  = afterPrefix;
-					curValue = "";
-				}
-				curFrames   = [];
-				inException = true;
-				continue;
-			}
-
-			// "Suppressed: ..." — same handling as Caused by (Java 7+)
-			if ( left( trimmedLine, 11 ) == "Suppressed:" ) {
-				// Flush previous exception
-				if ( len( curType ) ) {
-					arrayAppend( result, _buildJavaExceptionValue( curType, curValue, curFrames ) );
-				}
-				// Parse: "Suppressed: java.lang.Exception: message"
-				var afterSuppressed = trim( mid( trimmedLine, 12 ) ); // skip "Suppressed:"
-				var colonPos2       = find( ":", afterSuppressed );
-				if ( colonPos2 > 1 ) {
-					curType  = trim( mid( afterSuppressed, 1, colonPos2 - 1 ) );
-					curValue = trim( mid( afterSuppressed, colonPos2 + 1 ) );
-				} else {
-					curType  = afterSuppressed;
-					curValue = "";
-				}
-				curFrames   = [];
-				inException = true;
+				var prefixLen = ( left( trimmedLine, 10 ) == "Caused by:" ) ? 10 : 11;
+				var parsed    = _parseExceptionPrefix( trimmedLine, prefixLen );
+				curType       = parsed.type;
+				curValue      = parsed.value;
+				curFrames     = [];
+				inException   = true;
 				continue;
 			}
 
@@ -746,6 +720,25 @@ component accessors=true singleton {
 		}
 
 		return result;
+	}
+
+	/**
+	 * Parse a "Caused by:" or "Suppressed:" exception prefix line.
+	 * Returns { type, value }.
+	 */
+	private struct function _parseExceptionPrefix(
+		required string line,
+		required numeric prefixLen
+	){
+		var afterPrefix = trim( mid( arguments.line, arguments.prefixLen + 1 ) );
+		var colonPos    = find( ":", afterPrefix );
+		if ( colonPos > 1 ) {
+			return {
+				"type"  : trim( mid( afterPrefix, 1, colonPos - 1 ) ),
+				"value" : trim( mid( afterPrefix, colonPos + 1 ) )
+			};
+		}
+		return { "type" : afterPrefix, "value" : "" };
 	}
 
 	/**

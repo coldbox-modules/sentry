@@ -388,6 +388,31 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				expect( excValues[ 3 ].value ).toBe( "suppressed error" );
 				expect( excValues[ 3 ].stacktrace.frames.len() ).toBe( 1 );
 			} );
+
+			it( "skips Java stack trace parsing when TagContext is available", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Error",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [ { "TEMPLATE" : "/test.cfm", "LINE" : 1 } ],
+					"StackTrace" : "java.lang.RuntimeException: boom
+	at com.example.App.main(App.java:10)"
+				};
+
+				// Even with showJavaStackTrace=true, TagContext is available
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				// Should only have 1 entry — CFML frames are sufficient
+				expect( excValues.len() ).toBe( 1 );
+				expect( excValues[ 1 ].type ).toBe( "application Error" );
+			} );
 		} );
 	}
 
