@@ -1,6 +1,6 @@
 {
     "app":{
-        "cfengine":"boxlang@1.0.0-snapshot",
+        "cfengine":"boxlang@1",
         "serverHomeDirectory":".engine/boxlang"
     },
     "name":"sentry-boxlang@1",
@@ -24,6 +24,6 @@
         "args":"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9999 -Dboxlang.debugMode=true"
     },
     "scripts":{
-        "onServerInitialInstall":"install bx-compat-cfml@be,bx-esapi --noSave"
+        "onServerInitialInstall":"install bx-compat-cfml,bx-esapi --noSave"
     }
 }
