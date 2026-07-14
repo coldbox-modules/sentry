@@ -875,7 +875,7 @@ component accessors=true singleton {
 
 			// Skip lines that are clearly not CFML-related (e.g., pure Java frames)
 			// but don't prematurely skip — let the regex decide
-			var refMatches = reFindNoCase( templatePattern, trimmedLine, 1, true );
+			var refMatches = reFindNoCase( templatePattern, trimmedLine, 1, true, "all" );
 
 			if ( refMatches.len() && refMatches.pos[ 1 ] > 0 ) {
 				var templatePath = mid(
