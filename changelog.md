@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.6] - 2026-07-14
+
 ## [2.1.5] - 2024-12-25
 
 ### Fixed - [Issue #37](https://github.com/coldbox-modules/sentry/issues/37) - Fix var-scoping inside conditional
@@ -51,7 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Create first module version
 
-[Unreleased]: https://github.com/coldbox-modules/sentry/compare/v2.1.5...HEAD
+[Unreleased]: https://github.com/coldbox-modules/sentry/compare/v2.1.6...HEAD
+
+[2.1.6]: https://github.com/coldbox-modules/sentry/compare/v2.1.5...v2.1.6
 
 [2.1.5]: https://github.com/coldbox-modules/sentry/compare/v2.1.4...v2.1.5
 
