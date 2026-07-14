@@ -576,12 +576,11 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				service.setEnabled( true );
 				service.$( "post" );
 
-				// The functionLineNums mock will receive our synthetic Raw_Trace
-				// and return a function name
-				service
-					.getFunctionLineNums()
-					.$( "findTagContextFunction" )
-					.$results( "MyApp.handler", "MyApp.interceptor" );
+				// Replace the real functionLineNums property with a mock so
+				// we can control what findTagContextFunction returns
+				var mockFLN = createStub();
+				mockFLN.$( "findTagContextFunction" ).$results( "MyApp.handler", "MyApp.interceptor" );
+				service.$property( propertyName = "functionLineNums", mock = mockFLN );
 
 				var testException = {
 					"message"    : "Function Names",
@@ -599,7 +598,7 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				var frames  = payload.exception.values[ 1 ].stacktrace.frames;
 
 				// functionLineNums.findTagContextFunction() is called during frame building
-				expect( service.getFunctionLineNums().$count( "findTagContextFunction" ) ).toBe( 2 );
+				expect( mockFLN.$count( "findTagContextFunction" ) ).toBe( 2 );
 			} );
 
 			it( "skips invalid line numbers in stack trace template references", function(){
