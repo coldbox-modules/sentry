@@ -419,6 +419,215 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				expect( excValues.len() ).toBe( 1 );
 				expect( excValues[ 1 ].type ).toBe( "application Error" );
 			} );
+
+			// ========== Dynamic TagContext Extraction from Java Stack Trace ==========
+
+			it( "extracts CFML template references from Java stack trace into tagContext", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				// Simulate a Lucee-style stack trace with CFML file references
+				var testException = {
+					"message"    : "Null Pointer",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.NullPointerException
+	at com_example_App_cfc$cf.call(/var/www/App.cfc:42)
+	at com_example_App_cfc$cf.call(/var/www/App.cfc:15)
+	at com_example_Main_cfc$cf.call(/var/www/Main.cfc:8)
+	at lucee.runtime.PageContextImpl._doInclude(PageContextImpl.java:1118)
+	at lucee.runtime.PageContextImpl.execute(PageContextImpl.java:2816)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				// Should have CFML frames on the primary exception
+				var frames = excValues[ 1 ].stacktrace.frames;
+				expect( frames.len() ).toBe( 3 );
+
+				// Frames are in reverse order (bottom of stack first in Sentry)
+				expect( frames[ 3 ].filename ).toInclude( "Main.cfm" );
+				expect( frames[ 3 ].lineno ).toBe( 8 );
+				expect( frames[ 2 ].filename ).toInclude( "App.cfc" );
+				expect( frames[ 2 ].lineno ).toBe( 15 );
+				expect( frames[ 1 ].filename ).toInclude( "App.cfc" );
+				expect( frames[ 1 ].lineno ).toBe( 42 );
+			} );
+
+			it( "extracts BoxLang .bx/.bxs/.bxm template references from stack trace", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "BoxLang Error",
+					"detail"     : "",
+					"type"       : "expression",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.RuntimeException: boom
+	at boxlang.runtime.context.RequestContext.execute(/app/services/MyService.bx:55)
+	at boxlang.runtime.interceptor.InterceptorChain.invoke(/app/handlers/Main.bxs:12)
+	at boxlang.runtime.module.ModuleLoader.load(/app/modules/Payment.bxm:30)
+	at java.base/java.lang.Thread.run(Unknown Source)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var frames    = payload.exception.values[ 1 ].stacktrace.frames;
+
+				expect( frames.len() ).toBe( 3 );
+				expect( frames[ 3 ].filename ).toInclude( "Payment.bxm" );
+				expect( frames[ 3 ].lineno ).toBe( 30 );
+				expect( frames[ 2 ].filename ).toInclude( "Main.bxs" );
+				expect( frames[ 2 ].lineno ).toBe( 12 );
+				expect( frames[ 1 ].filename ).toInclude( "MyService.bx" );
+				expect( frames[ 1 ].lineno ).toBe( 55 );
+			} );
+
+			it( "returns empty tagContext for pure Java stack traces with no CFML references", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Pure Java",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.IllegalArgumentException: invalid argument
+	at java.util.Objects.requireNonNull(Objects.java:221)
+	at java.util.ArrayList.add(ArrayList.java:485)
+	at org.apache.commons.io.IOUtils.toString(IOUtilsUtils.java:2000)
+	at com.sun.tools.javac.Main.compile(Main.java:553)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var excValues = payload.exception.values;
+
+				// Primary CFML exception still exists but has no frames
+				expect( excValues[ 1 ].stacktrace.frames.len() ).toBe( 0 );
+
+				// Java exception frames are in separate entries from parseJavaStackTrace
+				expect( excValues.len() ).toBe( 2 );
+				expect( excValues[ 2 ].type ).toBe( "java.lang.IllegalArgumentException" );
+			} );
+
+			it( "normalizes Windows backslash paths in stack trace template references", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Windows Path",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.NullPointerException
+	at com_example_App_cfc$cf.call(C:\wwwroot\app\index.cfm:42)
+	at lucee.runtime.PageContextImpl.execute(PageContextImpl.java:2816)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var frames  = payload.exception.values[ 1 ].stacktrace.frames;
+
+				expect( frames.len() ).toBe( 1 );
+				// Should be normalized to forward slashes
+				expect( frames[ 1 ].filename ).toInclude( "C:/wwwroot/app/index.cfm" );
+				expect( frames[ 1 ].lineno ).toBe( 42 );
+			} );
+
+			it( "deduplicates repeated template+line combinations in tagContext", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Duplicate",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.RuntimeException: bang
+	at com_example_App_cfc$cf.call(/app/index.cfm:10)
+	at com_example_App_cfc$cf.call(/app/index.cfm:10)
+	at com_example_Other_cfc$cf.call(/app/other.cfm:20)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var frames  = payload.exception.values[ 1 ].stacktrace.frames;
+
+				// Duplicate /app/index.cfm:10 should only appear once
+				expect( frames.len() ).toBe( 2 );
+			} );
+
+			it( "finds function names via functionLineNums for synthetic tagContext frames", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				// The functionLineNums mock will receive our synthetic Raw_Trace
+				// and return a function name
+				service
+					.getFunctionLineNums()
+					.$( "findTagContextFunction" )
+					.$results( "MyApp.handler", "MyApp.interceptor" );
+
+				var testException = {
+					"message"    : "Function Names",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.NullPointerException
+	at com_example_handler_cfc$cf.call(/app/handler.cfc:42)
+	at com_example_interceptor_cfc$cf.call(/app/interceptor.cfc:15)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var frames  = payload.exception.values[ 1 ].stacktrace.frames;
+
+				// functionLineNums.findTagContextFunction() is called during frame building
+				expect( service.getFunctionLineNums().$count( "findTagContextFunction" ) ).toBe( 2 );
+			} );
+
+			it( "skips invalid line numbers in stack trace template references", function(){
+				var service = prepareMock( getSentry() );
+				service.setEnabled( true );
+				service.$( "post" );
+
+				var testException = {
+					"message"    : "Bad Lines",
+					"detail"     : "",
+					"type"       : "application",
+					"TagContext" : [],
+					"StackTrace" : "java.lang.NullPointerException
+	at com_example_App_cfc$cf.call(/app/index.cfm:0)
+	at com_example_App_cfc$cf.call(/app/index.cfm:-1)
+	at com_example_App_cfc$cf.call(/app/index.cfm:15)
+	at com_example_App_cfc$cf.call(/app/index.cfm:_invalid_)"
+				};
+
+				service.captureException( exception = testException, showJavaStackTrace = true );
+
+				var payload = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var frames  = payload.exception.values[ 1 ].stacktrace.frames;
+
+				// Only the valid line 15 should be included
+				expect( frames.len() ).toBe( 1 );
+				expect( frames[ 1 ].lineno ).toBe( 15 );
+			} );
 		} );
 	}
 

@@ -383,12 +383,8 @@ component accessors=true singleton {
 		arguments.exception.message    = arguments.exception.message ?: "";
 
 		var sentryExceptionExtra = {};
-		var file                 = "";
-		var fileArray            = "";
-		var currentTemplate      = "";
 		var tagContext           = arguments.exception.TagContext;
 		var i                    = 1;
-		var st                   = "";
 
 		// If there's no tag context, include the stack trace instead
 		if ( !tagContext.len() ) {
@@ -510,6 +506,11 @@ component accessors=true singleton {
 			for ( var je in javaExceptions ) {
 				arrayAppend( sentryException[ "exception" ].values, je );
 			}
+
+			// Dynamically generate tagContext from CFML/BoxLang template
+			// references in the Java stack trace, so the frame-building loop
+			// below can populate source code context for these frames.
+			tagContext = extractCFMLTagContextFromStackTrace( arguments.exception.StackTrace );
 		}
 
 		/*
@@ -523,70 +524,23 @@ component accessors=true singleton {
 		var stacki = 0;
 		for ( i = arrayLen( tagContext ); i > 0; i-- ) {
 			stacki++;
-			var thisTCItem = tagContext[ i ];
-			if ( compareNoCase( thisTCItem[ "TEMPLATE" ], currentTemplate ) ) {
-				fileArray = [];
-				if ( fileExists( thisTCItem[ "TEMPLATE" ] ) ) {
-					file = fileOpen( thisTCItem[ "TEMPLATE" ], "read" );
-					while ( !fileIsEOF( file ) ) {
-						arrayAppend( fileArray, fileReadLine( file ) );
-					}
-					fileClose( file );
-				}
-				currentTemplate = thisTCItem[ "TEMPLATE" ];
-			}
+			var thisTCItem   = tagContext[ i ];
+			var templatePath = normalizeSlashes( thisTCItem[ "TEMPLATE" ] );
+			var sourceCtx    = readSourceContext( templatePath, thisTCItem[ "LINE" ] );
 
 			var thisStackItem = {
-				"abs_path"     : thisTCItem[ "TEMPLATE" ],
-				"filename"     : normalizeSlashes( thisTCItem[ "TEMPLATE" ] ).replace( variables.settings.appRoot, "" ),
+				"abs_path"     : templatePath,
+				"filename"     : templatePath.replace( variables.settings.appRoot, "" ),
 				"lineno"       : thisTCItem[ "LINE" ],
-				"pre_context"  : [],
-				"context_line" : "",
-				"post_context" : []
+				"pre_context"  : sourceCtx.pre_context,
+				"context_line" : sourceCtx.context_line,
+				"post_context" : sourceCtx.post_context
 			};
 
 			// The name of the function being called
 			var functionName = functionLineNums.findTagContextFunction( thisTCItem );
 			if ( len( functionName ) ) {
 				thisStackItem[ "function" ] = functionName;
-			}
-
-			// for source code rendering
-			var fileLen   = arrayLen( fileArray );
-			var errorLine = thisTCItem[ "LINE" ];
-
-			if ( errorLine - 3 >= 1 && errorLine - 3 <= fileLen ) {
-				thisStackItem.pre_context[ 1 ] = fileArray[ errorLine - 3 ];
-			}
-			if ( errorLine - 2 >= 1 && errorLine - 2 <= fileLen ) {
-				thisStackItem.pre_context[ 2 ] = fileArray[ errorLine - 2 ];
-			}
-			if ( errorLine - 1 >= 1 && errorLine - 1 <= fileLen ) {
-				thisStackItem.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
-			}
-
-			if ( errorLine <= fileLen && fileLen > 0 && errorLine >= 1 ) {
-				thisStackItem[ "context_line" ] = fileArray[ errorLine ];
-			}
-
-			if ( fileLen >= errorLine + 1 ) {
-				var errorLine1 = errorLine + 1;
-
-				if ( errorLine1 != 0 ) {
-					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 ];
-				} else if ( fileLen >= errorLine1 + 1 ) {
-					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
-				}
-			}
-
-			if ( fileLen >= errorLine + 2 ) {
-				var errorLine2 = errorLine + 2;
-
-				if ( errorLine2 != 1 ) {
-					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 ];
-				} else if ( fileLen >= errorLine2 + 1 ) {
-					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
-				}
 			}
 
 			currentException[ "stacktrace" ][ "frames" ][ stacki ] = thisStackItem;
@@ -820,6 +774,152 @@ component accessors=true singleton {
 		}
 
 		return frame;
+	}
+
+	/**
+	 * Read source context lines around an error line in a template file.
+	 * Returns a struct with pre_context (3 lines before), context_line,
+	 * and post_context (2 lines after).
+	 *
+	 * @templatePath  Absolute path to the template file
+	 * @errorLine     The line number where the error occurred (1-based)
+	 */
+	private struct function readSourceContext(
+		required string templatePath,
+		required numeric errorLine
+	){
+		var result = {
+			"pre_context"  : [],
+			"context_line" : "",
+			"post_context" : []
+		};
+
+		if ( !fileExists( arguments.templatePath ) ) {
+			return result;
+		}
+
+		var fileArray = [];
+		var f         = fileOpen( arguments.templatePath, "read" );
+		while ( !fileIsEOF( f ) ) {
+			arrayAppend( fileArray, fileReadLine( f ) );
+		}
+		fileClose( f );
+
+		var fileLen = arrayLen( fileArray );
+
+		// Pre-context: 3 lines before the error line
+		if ( errorLine - 3 >= 1 && errorLine - 3 <= fileLen ) {
+			result.pre_context[ 1 ] = fileArray[ errorLine - 3 ];
+		}
+		if ( errorLine - 2 >= 1 && errorLine - 2 <= fileLen ) {
+			result.pre_context[ 2 ] = fileArray[ errorLine - 2 ];
+		}
+		if ( errorLine - 1 >= 1 && errorLine - 1 <= fileLen ) {
+			result.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
+		}
+
+		// Context line (the error line itself)
+		if ( errorLine <= fileLen && fileLen > 0 && errorLine >= 1 ) {
+			result.context_line = fileArray[ errorLine ];
+		}
+
+		// Post-context: 2 lines after the error line
+		if ( fileLen >= errorLine + 1 ) {
+			var errorLine1 = errorLine + 1;
+			if ( errorLine1 != 0 ) {
+				result.post_context[ 1 ] = fileArray[ errorLine1 ];
+			} else if ( fileLen >= errorLine1 + 1 ) {
+				result.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
+			}
+		}
+
+		if ( fileLen >= errorLine + 2 ) {
+			var errorLine2 = errorLine + 2;
+			if ( errorLine2 != 1 ) {
+				result.post_context[ 2 ] = fileArray[ errorLine2 ];
+			} else if ( fileLen >= errorLine2 + 1 ) {
+				result.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Extract CFML/BoxLang template references from a Java stack trace and
+	 * synthesize TagContext entries so the frame-building loop can populate
+	 * source code context for frames that originated in CFML/BoxLang code.
+	 *
+	 * Matches patterns like:
+	 *   - Lucee: at com_example_App_cfc$cf.call(/var/www/App.cfc:42)
+	 *   - BoxLang: at boxlang.runtime...(/path/to/Component.bx:15)
+	 *
+	 * Returns an array of structs with keys compatible with the engine-provided
+	 * TagContext (TEMPLATE, LINE, Raw_Trace, type, column, id, codePrintPlain).
+	 * Returns an empty array if no CFML/BoxLang template references are found.
+	 *
+	 * @stackTrace  The raw Java stack trace string (typically exception.StackTrace)
+	 */
+	private array function extractCFMLTagContextFromStackTrace( required string stackTrace ){
+		var result     = [];
+		var cleaned    = reReplace( arguments.stackTrace, "\\r", "", "All" );
+		var lines      = listToArray( cleaned, chr( 10 ) );
+		var seenFrames = {};
+
+		// Regex: match a CFML/BoxLang template path followed by :lineNumber
+		// inside parentheses — e.g., (/path/to/file.cfm:42) or (C:\app\file.bx:15)
+		var templatePattern = "\(([^)]+\.(cfm|cfc|bx|bxs|bxm)):(\d+)\)";
+
+		for ( var line in lines ) {
+			var trimmedLine = trim( line );
+			if ( !len( trimmedLine ) ) {
+				continue;
+			}
+
+			// Skip lines that are clearly not CFML-related (e.g., pure Java frames)
+			// but don't prematurely skip — let the regex decide
+			var refMatches = reFindNoCase( templatePattern, trimmedLine, 1, true );
+
+			if ( refMatches.len() && refMatches.pos[ 1 ] > 0 ) {
+				var templatePath = mid( trimmedLine, refMatches.pos[ 2 ], refMatches.len[ 2 ] );
+				var extension    = mid( trimmedLine, refMatches.pos[ 3 ], refMatches.len[ 3 ] );
+				var lineNumber   = val(
+					mid( trimmedLine, refMatches.pos[ 4 ], refMatches.len[ 4 ] )
+				);
+
+				// Normalize Windows backslash paths to forward slashes
+				templatePath = normalizeSlashes( templatePath );
+
+				// Skip invalid line numbers
+				if ( lineNumber <= 0 ) {
+					continue;
+				}
+
+				// Deduplicate: skip if we've already seen this template + line combo
+				var dedupKey = templatePath & ":" & lineNumber;
+				if ( structKeyExists( seenFrames, dedupKey ) ) {
+					continue;
+				}
+				seenFrames[ dedupKey ] = true;
+
+				var typeLabel = "cfml";
+				if ( listFindNoCase( "bx,bxs,bxm", extension ) ) {
+					typeLabel = "boxlang";
+				}
+
+				arrayAppend( result, {
+					"TEMPLATE"      : templatePath,
+					"LINE"          : lineNumber,
+					"Raw_Trace"     : trimmedLine,
+					"type"          : typeLabel,
+					"column"        : 0,
+					"id"            : "??",
+					"codePrintPlain" : ""
+				} );
+			}
+		}
+
+		return result;
 	}
 
 	// recursivley replace any CFC instances with structs
