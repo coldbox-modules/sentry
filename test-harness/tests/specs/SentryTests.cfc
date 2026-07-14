@@ -450,13 +450,14 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				var frames = excValues[ 1 ].stacktrace.frames;
 				expect( frames.len() ).toBe( 3 );
 
-				// Frames are in reverse order (bottom of stack first in Sentry)
-				expect( frames[ 3 ].filename ).toInclude( "Main.cfm" );
-				expect( frames[ 3 ].lineno ).toBe( 8 );
+				// Sentry frames are oldest-first: frames[1] is the originating
+				// call, frames[n] is where the exception was thrown
+				expect( frames[ 1 ].filename ).toInclude( "Main.cfc" );
+				expect( frames[ 1 ].lineno ).toBe( 8 );
 				expect( frames[ 2 ].filename ).toInclude( "App.cfc" );
 				expect( frames[ 2 ].lineno ).toBe( 15 );
-				expect( frames[ 1 ].filename ).toInclude( "App.cfc" );
-				expect( frames[ 1 ].lineno ).toBe( 42 );
+				expect( frames[ 3 ].filename ).toInclude( "App.cfc" );
+				expect( frames[ 3 ].lineno ).toBe( 42 );
 			} );
 
 			it( "extracts BoxLang .bx/.bxs/.bxm template references from stack trace", function(){
@@ -482,12 +483,13 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				var frames  = payload.exception.values[ 1 ].stacktrace.frames;
 
 				expect( frames.len() ).toBe( 3 );
-				expect( frames[ 3 ].filename ).toInclude( "Payment.bxm" );
-				expect( frames[ 3 ].lineno ).toBe( 30 );
+				// Sentry frames are oldest-first
+				expect( frames[ 1 ].filename ).toInclude( "Payment.bxm" );
+				expect( frames[ 1 ].lineno ).toBe( 30 );
 				expect( frames[ 2 ].filename ).toInclude( "Main.bxs" );
 				expect( frames[ 2 ].lineno ).toBe( 12 );
-				expect( frames[ 1 ].filename ).toInclude( "MyService.bx" );
-				expect( frames[ 1 ].lineno ).toBe( 55 );
+				expect( frames[ 3 ].filename ).toInclude( "MyService.bx" );
+				expect( frames[ 3 ].lineno ).toBe( 55 );
 			} );
 
 			it( "returns empty tagContext for pure Java stack traces with no CFML references", function(){
