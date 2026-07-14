@@ -344,8 +344,8 @@ component accessors=true singleton {
 	 * @level                      The level to log
 	 * @path                       The path to the script currently executing
 	 * @oneLineStackTrace          Set to true to render only 1 tag context. This is not the Java Stack Trace this is simply for the code output in Sentry
-	 * @showJavaStackTrace         Passes Java Stack Trace as a string to the extra attribute
-	 * @removeTabsOnJavaStackTrace Removes the tab on the child lines in the Stack Trace
+	 * @showJavaStackTrace         When true, parses the Java stack trace and sends it as structured exception entries in exception.values with proper Sentry frames.
+	 * @removeTabsOnJavaStackTrace Deprecated — no longer needed. Kept for backward compatibility.
 	 * @additionalData             Additional metadata to store with the event - passed into the extra attribute
 	 * @cgiVars                    Parameters to send to Sentry, defaults to the CGI Scope
 	 * @useThread                  Option to send post to Sentry in its own thread
@@ -383,12 +383,8 @@ component accessors=true singleton {
 		arguments.exception.message    = arguments.exception.message ?: "";
 
 		var sentryExceptionExtra = {};
-		var file                 = "";
-		var fileArray            = "";
-		var currentTemplate      = "";
 		var tagContext           = arguments.exception.TagContext;
 		var i                    = 1;
-		var st                   = "";
 
 		// If there's no tag context, include the stack trace instead
 		if ( !tagContext.len() ) {
@@ -422,16 +418,8 @@ component accessors=true singleton {
 			sentryException.message = arguments.message & " " & sentryException.message;
 		}
 
-		if ( arguments.showJavaStackTrace ) {
-			st = reReplace(
-				arguments.exception.StackTrace,
-				"\r",
-				"",
-				"All"
-			);
-			if ( arguments.removeTabsOnJavaStackTrace ) st = reReplace( st, "\t", "", "All" );
-			sentryExceptionExtra[ "Java StackTrace" ] = listToArray( st, chr( 10 ) );
-		}
+		// Java stack trace is now sent as a structured exception entry in exception.values
+		// via parseJavaStackTrace() below, not as a raw text blob in extra.
 
 		if ( !isNull( arguments.additionalData ) ) {
 			sentryExceptionExtra[ "Additional Data" ] = arguments.additionalData;
@@ -507,10 +495,23 @@ component accessors=true singleton {
 			"type"       : arguments.exception.type & " Error",
 			"stacktrace" : { "frames" : [] }
 		};
-
 		sentryException[ "exception" ] = { "values" : [ currentException ] };
 
+		// If showJavaStackTrace is enabled AND there's no tagContext, parse the
+		// Java stack trace and add it as a second (or more) entry in exception.values.
+		// When tagContext is available, the CFML frames are sufficient — no need
+		// for the overhead of parsing the raw Java stack trace.
+		if ( arguments.showJavaStackTrace && !tagContext.len() && len( arguments.exception.StackTrace ) ) {
+			var javaExceptions = parseJavaStackTrace( arguments.exception.StackTrace );
+			for ( var je in javaExceptions ) {
+				arrayAppend( sentryException[ "exception" ].values, je );
+			}
 
+			// Dynamically generate tagContext from CFML/BoxLang template
+			// references in the Java stack trace, so the frame-building loop
+			// below can populate source code context for these frames.
+			tagContext = extractCFMLTagContextFromStackTrace( arguments.exception.StackTrace );
+		}
 
 		/*
 		 * STACKTRACE INTERFACE
@@ -523,70 +524,23 @@ component accessors=true singleton {
 		var stacki = 0;
 		for ( i = arrayLen( tagContext ); i > 0; i-- ) {
 			stacki++;
-			var thisTCItem = tagContext[ i ];
-			if ( compareNoCase( thisTCItem[ "TEMPLATE" ], currentTemplate ) ) {
-				fileArray = [];
-				if ( fileExists( thisTCItem[ "TEMPLATE" ] ) ) {
-					file = fileOpen( thisTCItem[ "TEMPLATE" ], "read" );
-					while ( !fileIsEOF( file ) ) {
-						arrayAppend( fileArray, fileReadLine( file ) );
-					}
-					fileClose( file );
-				}
-				currentTemplate = thisTCItem[ "TEMPLATE" ];
-			}
+			var thisTCItem   = tagContext[ i ];
+			var templatePath = normalizeSlashes( thisTCItem[ "TEMPLATE" ] );
+			var sourceCtx    = readSourceContext( templatePath, thisTCItem[ "LINE" ] );
 
 			var thisStackItem = {
-				"abs_path"     : thisTCItem[ "TEMPLATE" ],
-				"filename"     : normalizeSlashes( thisTCItem[ "TEMPLATE" ] ).replace( variables.settings.appRoot, "" ),
+				"abs_path"     : templatePath,
+				"filename"     : templatePath.replace( variables.settings.appRoot, "" ),
 				"lineno"       : thisTCItem[ "LINE" ],
-				"pre_context"  : [],
-				"context_line" : "",
-				"post_context" : []
+				"pre_context"  : sourceCtx.pre_context,
+				"context_line" : sourceCtx.context_line,
+				"post_context" : sourceCtx.post_context
 			};
 
 			// The name of the function being called
 			var functionName = functionLineNums.findTagContextFunction( thisTCItem );
 			if ( len( functionName ) ) {
 				thisStackItem[ "function" ] = functionName;
-			}
-
-			// for source code rendering
-			var fileLen   = arrayLen( fileArray );
-			var errorLine = thisTCItem[ "LINE" ];
-
-			if ( errorLine - 3 >= 1 && errorLine - 3 <= fileLen ) {
-				thisStackItem.pre_context[ 1 ] = fileArray[ errorLine - 3 ];
-			}
-			if ( errorLine - 2 >= 1 && errorLine - 2 <= fileLen ) {
-				thisStackItem.pre_context[ 2 ] = fileArray[ errorLine - 2 ];
-			}
-			if ( errorLine - 1 >= 1 && errorLine - 1 <= fileLen ) {
-				thisStackItem.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
-			}
-
-			if ( errorLine <= fileLen && fileLen > 0 && errorLine >= 1 ) {
-				thisStackItem[ "context_line" ] = fileArray[ errorLine ];
-			}
-
-			if ( fileLen >= errorLine + 1 ) {
-				var errorLine1 = errorLine + 1;
-
-				if ( errorLine1 != 0 ) {
-					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 ];
-				} else if ( fileLen >= errorLine1 + 1 ) {
-					thisStackItem.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
-				}
-			}
-
-			if ( fileLen >= errorLine + 2 ) {
-				var errorLine2 = errorLine + 2;
-
-				if ( errorLine2 != 1 ) {
-					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 ];
-				} else if ( fileLen >= errorLine2 + 1 ) {
-					thisStackItem.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
-				}
 			}
 
 			currentException[ "stacktrace" ][ "frames" ][ stacki ] = thisStackItem;
@@ -601,6 +555,385 @@ component accessors=true singleton {
 		);
 	}
 
+	/**
+	 * Parse a raw Java stack trace string into Sentry exception values.
+	 *
+	 * Handles the standard Java stack trace format including:
+	 *   - Exception class name and message on the first line(s)
+	 *   - "at package.Class.method(File.java:line)" frames
+	 *   - "at package.Class.method(Native Method)" frames
+	 *   - "... N more" truncated frame indicators
+	 *   - "Caused by:" nested exception chains
+	 *
+	 * Returns an array of Sentry exception value structs, each with:
+	 *   - type:    The Java exception class name
+	 *   - value:   The exception message
+	 *   - stacktrace: { frames: [...] }  with parsed frame objects
+	 */
+	private array function parseJavaStackTrace( required string stackTrace ){
+		var result      = [];
+		// Strip \r to handle Windows-style line endings consistently
+		var cleaned     = reReplace( arguments.stackTrace, "\\r", "", "All" );
+		var lines       = listToArray( cleaned, chr( 10 ) );
+		var curType     = "";
+		var curValue    = "";
+		var curFrames   = [];
+		var inException = false;
+
+		for ( var line in lines ) {
+			// Skip blank lines
+			if ( !len( trim( line ) ) ) {
+				continue;
+			}
+
+			var trimmedLine = trim( line );
+
+			// "... N more" — skip, these are duplicated frames
+			if ( left( trimmedLine, 3 ) == "..." && reFind( "^\\.\\.\\.\\s+\\d+\\s+more", trimmedLine ) ) {
+				continue;
+			}
+
+			// "Caused by: ..." or "Suppressed: ..." — save current exception, start a new one
+			if ( left( trimmedLine, 10 ) == "Caused by:" || left( trimmedLine, 11 ) == "Suppressed:" ) {
+				// Flush previous exception
+				if ( len( curType ) ) {
+					arrayAppend( result, _buildJavaExceptionValue( curType, curValue, curFrames ) );
+				}
+				var prefixLen = ( left( trimmedLine, 10 ) == "Caused by:" ) ? 10 : 11;
+				var parsed    = _parseExceptionPrefix( trimmedLine, prefixLen );
+				curType       = parsed.type;
+				curValue      = parsed.value;
+				curFrames     = [];
+				inException   = true;
+				continue;
+			}
+
+			// "at ..." frame line
+			if ( left( trimmedLine, 3 ) == "at " ) {
+				inException    = true;
+				// Parse: "at com.example.Class.method(File.java:42)"
+				// or:   "at com.example.Class.method(Native Method)"
+				var afterAt    = ( len( trimmedLine ) > 3 ) ? mid( trimmedLine, 4, len( trimmedLine ) ) : "";
+				var openParen  = find( "(", afterAt );
+				var closeParen = find( ")", afterAt );
+
+				if ( openParen > 1 && closeParen > openParen ) {
+					var qualifiedName = mid( afterAt, 1, openParen - 1 );
+					var parenContent  = mid(
+						afterAt,
+						openParen + 1,
+						closeParen - openParen - 1
+					);
+
+					// Split qualified name on last dot: "com.example.Class.method" → class + method
+					var parts    = listToArray( qualifiedName, "." );
+					var atMethod = parts[ parts.len() ];
+					parts.deleteAt( parts.len() );
+					var atClass = arrayToList( parts, "." );
+
+					// Parse paren content: "File.java:42" or "Native Method"
+					var colonInParen = find( ":", parenContent );
+					if ( colonInParen > 1 ) {
+						var atFile = mid( parenContent, 1, colonInParen - 1 );
+						var atLine = val(
+							mid(
+								parenContent,
+								colonInParen + 1,
+								len( parenContent )
+							)
+						);
+						arrayAppend( curFrames, _buildJavaFrame( atClass, atMethod, atFile, atLine ) );
+					} else {
+						// Native Method, Unknown Source, etc.
+						arrayAppend( curFrames, _buildJavaFrame( atClass, atMethod, "", 0 ) );
+					}
+				}
+				continue;
+			}
+
+			// If we haven't hit any "at" lines yet, this is part of the exception header
+			if ( !inException ) {
+				var colonPos3 = find( ":", trimmedLine );
+				if ( colonPos3 > 1 ) {
+					// Check if it looks like an exception class name (no spaces before colon)
+					var beforeColon = mid( trimmedLine, 1, colonPos3 - 1 );
+					if ( !find( " ", beforeColon ) ) {
+						curType  = beforeColon;
+						curValue = ( colonPos3 < len( trimmedLine ) )
+						 ? trim( mid( trimmedLine, colonPos3 + 1, len( trimmedLine ) ) )
+						 : "";
+					} else {
+						// Space before colon — probably a continuation of the message
+						curValue = curValue & " " & trimmedLine;
+					}
+				} else if ( !len( curType ) ) {
+					// First line might just be the exception class
+					curType = trimmedLine;
+				} else {
+					// Continuation of the message
+					curValue = curValue & " " & trimmedLine;
+				}
+			}
+		}
+
+		// Flush the last exception
+		if ( len( curType ) ) {
+			arrayAppend( result, _buildJavaExceptionValue( curType, curValue, curFrames ) );
+		}
+
+		return result;
+	}
+
+	/**
+	 * Parse a "Caused by:" or "Suppressed:" exception prefix line.
+	 * Returns { type, value }.
+	 */
+	private struct function _parseExceptionPrefix( required string line, required numeric prefixLen ){
+		var afterPrefix = ( len( arguments.line ) > arguments.prefixLen )
+		 ? trim(
+			mid(
+				arguments.line,
+				arguments.prefixLen + 1,
+				len( arguments.line )
+			)
+		)
+		 : "";
+		var colonPos = find( ":", afterPrefix );
+		if ( colonPos > 1 ) {
+			return {
+				"type"  : trim( mid( afterPrefix, 1, colonPos - 1 ) ),
+				"value" : trim( mid( afterPrefix, colonPos + 1, len( afterPrefix ) ) )
+			};
+		}
+		return { "type" : afterPrefix, "value" : "" };
+	}
+
+	/**
+	 * Build a single Sentry exception value struct for a Java exception.
+	 */
+	private struct function _buildJavaExceptionValue(
+		required string type,
+		required string value,
+		required array frames
+	){
+		return {
+			"type"       : arguments.type,
+			"value"      : arguments.value,
+			"stacktrace" : { "frames" : arguments.frames }
+		};
+	}
+
+	/**
+	 * Build a single Sentry stacktrace frame from a Java "at" line.
+	 *
+	 * @className  Fully qualified class name (e.g. "com.example.MyClass")
+	 * @method     Method name (e.g. "myMethod")
+	 * @fileName   Source file name (e.g. "MyClass.java"), may be empty
+	 * @lineNumber Line number, 0 if unknown
+	 */
+	private struct function _buildJavaFrame(
+		required string className,
+		required string method,
+		required string fileName,
+		required numeric lineNumber
+	){
+		var frame = {
+			"function"     : arguments.className & "." & arguments.method,
+			"filename"     : arguments.fileName,
+			"lineno"       : arguments.lineNumber,
+			"abs_path"     : arguments.className,
+			"in_app"       : false,
+			"context_line" : "",
+			"pre_context"  : [],
+			"post_context" : []
+		};
+
+		// Heuristic: if the class doesn't start with common framework prefixes,
+		// it's probably application code
+		var frameworkPrefixes = [
+			"java.",
+			"javax.",
+			"jakarta.",
+			"sun.",
+			"com.sun.",
+			"org.apache.",
+			"org.springframework.",
+			"org.hibernate.",
+			"lucee.",
+			"boxlang."
+		];
+		var isFramework = false;
+		for ( var prefix in frameworkPrefixes ) {
+			if ( left( arguments.className, len( prefix ) ) == prefix ) {
+				isFramework = true;
+				break;
+			}
+		}
+		if ( !isFramework ) {
+			frame[ "in_app" ] = true;
+		}
+
+		return frame;
+	}
+
+	/**
+	 * Read source context lines around an error line in a template file.
+	 * Returns a struct with pre_context (3 lines before), context_line,
+	 * and post_context (2 lines after).
+	 *
+	 * @templatePath Absolute path to the template file
+	 * @errorLine    The line number where the error occurred (1-based)
+	 */
+	private struct function readSourceContext( required string templatePath, required numeric errorLine ){
+		var result = {
+			"pre_context"  : [],
+			"context_line" : "",
+			"post_context" : []
+		};
+
+		if ( !fileExists( arguments.templatePath ) ) {
+			return result;
+		}
+
+		var fileArray = [];
+		var f         = fileOpen( arguments.templatePath, "read" );
+		while ( !fileIsEOF( f ) ) {
+			arrayAppend( fileArray, fileReadLine( f ) );
+		}
+		fileClose( f );
+
+		var fileLen = arrayLen( fileArray );
+
+		// Pre-context: 3 lines before the error line
+		if ( errorLine - 3 >= 1 && errorLine - 3 <= fileLen ) {
+			result.pre_context[ 1 ] = fileArray[ errorLine - 3 ];
+		}
+		if ( errorLine - 2 >= 1 && errorLine - 2 <= fileLen ) {
+			result.pre_context[ 2 ] = fileArray[ errorLine - 2 ];
+		}
+		if ( errorLine - 1 >= 1 && errorLine - 1 <= fileLen ) {
+			result.pre_context[ 3 ] = fileArray[ errorLine - 1 ];
+		}
+
+		// Context line (the error line itself)
+		if ( errorLine <= fileLen && fileLen > 0 && errorLine >= 1 ) {
+			result.context_line = fileArray[ errorLine ];
+		}
+
+		// Post-context: 2 lines after the error line
+		if ( fileLen >= errorLine + 1 ) {
+			var errorLine1 = errorLine + 1;
+			if ( errorLine1 != 0 ) {
+				result.post_context[ 1 ] = fileArray[ errorLine1 ];
+			} else if ( fileLen >= errorLine1 + 1 ) {
+				result.post_context[ 1 ] = fileArray[ errorLine1 + 1 ];
+			}
+		}
+
+		if ( fileLen >= errorLine + 2 ) {
+			var errorLine2 = errorLine + 2;
+			if ( errorLine2 != 1 ) {
+				result.post_context[ 2 ] = fileArray[ errorLine2 ];
+			} else if ( fileLen >= errorLine2 + 1 ) {
+				result.post_context[ 2 ] = fileArray[ errorLine2 + 1 ];
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Extract CFML/BoxLang template references from a Java stack trace and
+	 * synthesize TagContext entries so the frame-building loop can populate
+	 * source code context for frames that originated in CFML/BoxLang code.
+	 *
+	 * Matches patterns like:
+	 *   - Lucee: at com_example_App_cfc$cf.call(/var/www/App.cfc:42)
+	 *   - BoxLang: at boxlang.runtime...(/path/to/Component.bx:15)
+	 *
+	 * Returns an array of structs with keys compatible with the engine-provided
+	 * TagContext (TEMPLATE, LINE, Raw_Trace, type, column, id, codePrintPlain).
+	 * Returns an empty array if no CFML/BoxLang template references are found.
+	 *
+	 * @stackTrace The raw Java stack trace string (typically exception.StackTrace)
+	 */
+	private array function extractCFMLTagContextFromStackTrace( required string stackTrace ){
+		var result     = [];
+		var cleaned    = reReplace( arguments.stackTrace, "\\r", "", "All" );
+		var lines      = listToArray( cleaned, chr( 10 ) );
+		var seenFrames = {};
+
+		// Regex: match a CFML/BoxLang template path followed by :lineNumber
+		// inside parentheses — e.g., (/path/to/file.cfm:42) or (C:\app\file.bx:15)
+		var templatePattern = "\(([^)]+\.(cfm|cfc|bx|bxs|bxm)):(\d+)\)";
+
+		for ( var line in lines ) {
+			var trimmedLine = trim( line );
+			if ( !len( trimmedLine ) ) {
+				continue;
+			}
+
+			// Skip lines that are clearly not CFML-related (e.g., pure Java frames)
+			// but don't prematurely skip — let the regex decide
+			var refMatches = reFindNoCase( templatePattern, trimmedLine, 1, true );
+
+			if ( refMatches.pos[ 1 ] > 0 ) {
+				var templatePath = mid(
+					trimmedLine,
+					refMatches.pos[ 2 ],
+					refMatches.len[ 2 ]
+				);
+				var extension = mid(
+					trimmedLine,
+					refMatches.pos[ 3 ],
+					refMatches.len[ 3 ]
+				);
+				var lineNumber = val(
+					mid(
+						trimmedLine,
+						refMatches.pos[ 4 ],
+						refMatches.len[ 4 ]
+					)
+				);
+
+				// Normalize Windows backslash paths to forward slashes
+				templatePath = normalizeSlashes( templatePath );
+
+				// Skip invalid line numbers
+				if ( lineNumber <= 0 ) {
+					continue;
+				}
+
+				// Deduplicate: skip if we've already seen this template + line combo
+				var dedupKey = templatePath & ":" & lineNumber;
+				if ( structKeyExists( seenFrames, dedupKey ) ) {
+					continue;
+				}
+				seenFrames[ dedupKey ] = true;
+
+				var typeLabel = "cfml";
+				if ( listFindNoCase( "bx,bxs,bxm", extension ) ) {
+					typeLabel = "boxlang";
+				}
+
+				arrayAppend(
+					result,
+					{
+						"TEMPLATE"       : templatePath,
+						"LINE"           : lineNumber,
+						"Raw_Trace"      : trimmedLine,
+						"type"           : typeLabel,
+						"column"         : 0,
+						"id"             : "??",
+						"codePrintPlain" : ""
+					}
+				);
+			}
+		}
+
+		return result;
+	}
+
 	// recursivley replace any CFC instances with structs
 	function structifyObject( o, name = "" ){
 		var result = {};
@@ -611,7 +944,9 @@ component accessors=true singleton {
 		return structReduce(
 			o,
 			function( acc, k, v ){
-				if ( !isCustomFunction( v ) ) {
+				if ( isNull( arguments.v ) ) {
+					acc[ k ] = javacast( "null", 0 );
+				} else if ( !isCustomFunction( v ) ) {
 					if ( isObject( v ) ) {
 						acc[ k ] = structifyObject( v, getMetadata( v ).name );
 					} else if ( isStruct( v ) ) {
@@ -647,7 +982,7 @@ component accessors=true singleton {
 		var header          = "";
 		var timeVars        = getTimeVars();
 		var httpRequestData = getHTTPDataForRequest();
-		var traceParent = httpRequestData.headers.traceParent ?: "";
+		var traceParent     = httpRequestData.headers.traceParent ?: "";
 
 		// Add global metadata
 		arguments.captureStruct[ "event_id" ]    = lCase( replace( createUUID(), "-", "", "all" ) );
@@ -718,7 +1053,9 @@ component accessors=true singleton {
 			if ( listFindNoCase( "id,email,ip_address,username", key ) ) {
 				key = lCase( key );
 			}
-			correctCasingUserInfo[ key ] = thisUserInfo[ key ];
+			if ( !isNull( thisUserInfo[ key ] ) ) {
+				correctCasingUserInfo[ key ] = thisUserInfo[ key ];
+			}
 		}
 
 		arguments.captureStruct[ "user" ] = correctCasingUserInfo;

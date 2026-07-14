@@ -73,7 +73,9 @@ component {
 			"platform"               : "cfml",
 			"logger"                 : ( !isNull( controller ) ? controller.getSetting( "appName" ) : "sentry" ),
 			"userInfoUDF"            : "",
-			"extraInfoUDFs"          : {}
+			"extraInfoUDFs"          : {}, // these two settings may be added but they
+			"showJavaStackTrace"     : false,
+			"throwOnPostError"       : false
 		};
 
 		// Try to look up the release based on a box.json

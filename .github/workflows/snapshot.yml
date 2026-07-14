@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'development'
+  workflow_dispatch:
 
 # Unique group name per workflow-branch/tag combo
 concurrency:
@@ -23,7 +24,7 @@ jobs:
   ##########################################################################################
   format:
     name: Code Auto-Formatting
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
