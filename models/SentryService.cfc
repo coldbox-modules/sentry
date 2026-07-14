@@ -781,13 +781,10 @@ component accessors=true singleton {
 	 * Returns a struct with pre_context (3 lines before), context_line,
 	 * and post_context (2 lines after).
 	 *
-	 * @templatePath  Absolute path to the template file
-	 * @errorLine     The line number where the error occurred (1-based)
+	 * @templatePath Absolute path to the template file
+	 * @errorLine    The line number where the error occurred (1-based)
 	 */
-	private struct function readSourceContext(
-		required string templatePath,
-		required numeric errorLine
-	){
+	private struct function readSourceContext( required string templatePath, required numeric errorLine ){
 		var result = {
 			"pre_context"  : [],
 			"context_line" : "",
@@ -858,7 +855,7 @@ component accessors=true singleton {
 	 * TagContext (TEMPLATE, LINE, Raw_Trace, type, column, id, codePrintPlain).
 	 * Returns an empty array if no CFML/BoxLang template references are found.
 	 *
-	 * @stackTrace  The raw Java stack trace string (typically exception.StackTrace)
+	 * @stackTrace The raw Java stack trace string (typically exception.StackTrace)
 	 */
 	private array function extractCFMLTagContextFromStackTrace( required string stackTrace ){
 		var result     = [];
@@ -881,10 +878,22 @@ component accessors=true singleton {
 			var refMatches = reFindNoCase( templatePattern, trimmedLine, 1, true );
 
 			if ( refMatches.len() && refMatches.pos[ 1 ] > 0 ) {
-				var templatePath = mid( trimmedLine, refMatches.pos[ 2 ], refMatches.len[ 2 ] );
-				var extension    = mid( trimmedLine, refMatches.pos[ 3 ], refMatches.len[ 3 ] );
-				var lineNumber   = val(
-					mid( trimmedLine, refMatches.pos[ 4 ], refMatches.len[ 4 ] )
+				var templatePath = mid(
+					trimmedLine,
+					refMatches.pos[ 2 ],
+					refMatches.len[ 2 ]
+				);
+				var extension = mid(
+					trimmedLine,
+					refMatches.pos[ 3 ],
+					refMatches.len[ 3 ]
+				);
+				var lineNumber = val(
+					mid(
+						trimmedLine,
+						refMatches.pos[ 4 ],
+						refMatches.len[ 4 ]
+					)
 				);
 
 				// Normalize Windows backslash paths to forward slashes
@@ -907,15 +916,18 @@ component accessors=true singleton {
 					typeLabel = "boxlang";
 				}
 
-				arrayAppend( result, {
-					"TEMPLATE"      : templatePath,
-					"LINE"          : lineNumber,
-					"Raw_Trace"     : trimmedLine,
-					"type"          : typeLabel,
-					"column"        : 0,
-					"id"            : "??",
-					"codePrintPlain" : ""
-				} );
+				arrayAppend(
+					result,
+					{
+						"TEMPLATE"       : templatePath,
+						"LINE"           : lineNumber,
+						"Raw_Trace"      : trimmedLine,
+						"type"           : typeLabel,
+						"column"         : 0,
+						"id"             : "??",
+						"codePrintPlain" : ""
+					}
+				);
 			}
 		}
 

@@ -478,8 +478,8 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 
 				service.captureException( exception = testException, showJavaStackTrace = true );
 
-				var payload   = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
-				var frames    = payload.exception.values[ 1 ].stacktrace.frames;
+				var payload = deserializeJSON( service.$callLog( "post" ).post[ 1 ][ 4 ] );
+				var frames  = payload.exception.values[ 1 ].stacktrace.frames;
 
 				expect( frames.len() ).toBe( 3 );
 				expect( frames[ 3 ].filename ).toInclude( "Payment.bxm" );
