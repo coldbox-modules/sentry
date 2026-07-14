@@ -659,7 +659,7 @@ component accessors=true singleton {
 				inException    = true;
 				// Parse: "at com.example.Class.method(File.java:42)"
 				// or:   "at com.example.Class.method(Native Method)"
-				var afterAt    = mid( trimmedLine, 4 ); // skip "at "
+				var afterAt    = ( len( trimmedLine ) > 3 ) ? mid( trimmedLine, 4, len( trimmedLine ) ) : "";
 				var openParen  = find( "(", afterAt );
 				var closeParen = find( ")", afterAt );
 
@@ -681,7 +681,7 @@ component accessors=true singleton {
 					var colonInParen = find( ":", parenContent );
 					if ( colonInParen > 1 ) {
 						var atFile = mid( parenContent, 1, colonInParen - 1 );
-						var atLine = val( mid( parenContent, colonInParen + 1 ) );
+						var atLine = val( mid( parenContent, colonInParen + 1, len( parenContent ) ) );
 						arrayAppend( curFrames, _buildJavaFrame( atClass, atMethod, atFile, atLine ) );
 					} else {
 						// Native Method, Unknown Source, etc.
@@ -699,7 +699,9 @@ component accessors=true singleton {
 					var beforeColon = mid( trimmedLine, 1, colonPos3 - 1 );
 					if ( !find( " ", beforeColon ) ) {
 						curType  = beforeColon;
-						curValue = trim( mid( trimmedLine, colonPos3 + 1 ) );
+						curValue = ( colonPos3 < len( trimmedLine ) )
+							? trim( mid( trimmedLine, colonPos3 + 1, len( trimmedLine ) ) )
+							: "";
 					} else {
 						// Space before colon — probably a continuation of the message
 						curValue = curValue & " " & trimmedLine;
@@ -730,12 +732,14 @@ component accessors=true singleton {
 		required string line,
 		required numeric prefixLen
 	){
-		var afterPrefix = trim( mid( arguments.line, arguments.prefixLen + 1 ) );
+		var afterPrefix = ( len( arguments.line ) > arguments.prefixLen )
+			? trim( mid( arguments.line, arguments.prefixLen + 1, len( arguments.line ) ) )
+			: "";
 		var colonPos    = find( ":", afterPrefix );
 		if ( colonPos > 1 ) {
 			return {
 				"type"  : trim( mid( afterPrefix, 1, colonPos - 1 ) ),
-				"value" : trim( mid( afterPrefix, colonPos + 1 ) )
+				"value" : trim( mid( afterPrefix, colonPos + 1, len( afterPrefix ) ) )
 			};
 		}
 		return { "type" : afterPrefix, "value" : "" };

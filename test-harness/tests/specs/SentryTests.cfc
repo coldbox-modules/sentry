@@ -54,8 +54,14 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				try {
 					throw( "Missing tag Context" );
 				} catch ( any e ) {
-					var newE = duplicate( e );
-					structDelete( newE, "TagContext" );
+					// Build a struct manually — duplicate(e) fails on Adobe CF
+					// and for...in iteration fails on BoxLang
+					var newE = {
+						"message"    : e.message ?: "",
+						"detail"     : e.detail ?: "",
+						"type"       : e.type ?: "",
+						"StackTrace" : e.StackTrace ?: ""
+					};
 					getLogbox().getRootLogger().error( "Missing tag Context", newE );
 				}
 			} );
