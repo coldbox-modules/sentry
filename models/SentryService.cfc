@@ -501,11 +501,11 @@ component accessors=true singleton {
 		};
 		sentryException[ "exception" ] = { "values" : [ currentException ] };
 
-			// If showJavaStackTrace is enabled AND there's no tagContext, parse the
-			// Java stack trace and add it as a second (or more) entry in exception.values.
-			// When tagContext is available, the CFML frames are sufficient — no need
-			// for the overhead of parsing the raw Java stack trace.
-			if ( arguments.showJavaStackTrace && !tagContext.len() && len( arguments.exception.StackTrace ) ) {
+		// If showJavaStackTrace is enabled AND there's no tagContext, parse the
+		// Java stack trace and add it as a second (or more) entry in exception.values.
+		// When tagContext is available, the CFML frames are sufficient — no need
+		// for the overhead of parsing the raw Java stack trace.
+		if ( arguments.showJavaStackTrace && !tagContext.len() && len( arguments.exception.StackTrace ) ) {
 			var javaExceptions = parseJavaStackTrace( arguments.exception.StackTrace );
 			for ( var je in javaExceptions ) {
 				arrayAppend( sentryException[ "exception" ].values, je );
@@ -681,7 +681,13 @@ component accessors=true singleton {
 					var colonInParen = find( ":", parenContent );
 					if ( colonInParen > 1 ) {
 						var atFile = mid( parenContent, 1, colonInParen - 1 );
-						var atLine = val( mid( parenContent, colonInParen + 1, len( parenContent ) ) );
+						var atLine = val(
+							mid(
+								parenContent,
+								colonInParen + 1,
+								len( parenContent )
+							)
+						);
 						arrayAppend( curFrames, _buildJavaFrame( atClass, atMethod, atFile, atLine ) );
 					} else {
 						// Native Method, Unknown Source, etc.
@@ -700,8 +706,8 @@ component accessors=true singleton {
 					if ( !find( " ", beforeColon ) ) {
 						curType  = beforeColon;
 						curValue = ( colonPos3 < len( trimmedLine ) )
-							? trim( mid( trimmedLine, colonPos3 + 1, len( trimmedLine ) ) )
-							: "";
+						 ? trim( mid( trimmedLine, colonPos3 + 1, len( trimmedLine ) ) )
+						 : "";
 					} else {
 						// Space before colon — probably a continuation of the message
 						curValue = curValue & " " & trimmedLine;
@@ -728,14 +734,17 @@ component accessors=true singleton {
 	 * Parse a "Caused by:" or "Suppressed:" exception prefix line.
 	 * Returns { type, value }.
 	 */
-	private struct function _parseExceptionPrefix(
-		required string line,
-		required numeric prefixLen
-	){
+	private struct function _parseExceptionPrefix( required string line, required numeric prefixLen ){
 		var afterPrefix = ( len( arguments.line ) > arguments.prefixLen )
-			? trim( mid( arguments.line, arguments.prefixLen + 1, len( arguments.line ) ) )
-			: "";
-		var colonPos    = find( ":", afterPrefix );
+		 ? trim(
+			mid(
+				arguments.line,
+				arguments.prefixLen + 1,
+				len( arguments.line )
+			)
+		)
+		 : "";
+		var colonPos = find( ":", afterPrefix );
 		if ( colonPos > 1 ) {
 			return {
 				"type"  : trim( mid( afterPrefix, 1, colonPos - 1 ) ),
