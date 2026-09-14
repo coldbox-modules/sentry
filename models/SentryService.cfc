@@ -5,7 +5,8 @@
  * ---
  * Connector to Sentry
  */
-component accessors=true singleton {
+// Complete dependency injection and onDIComplete before publishing this singleton.
+component accessors=true singleton threadSafe {
 
 	// DI
 	property name="wirebox"            inject="wirebox";
