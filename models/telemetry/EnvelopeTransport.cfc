@@ -20,15 +20,8 @@ component {
 		variables[ "executor" ]  = createObject( "java", "java.util.concurrent.Executors" ).newFixedThreadPool(
 			javacast( "int", 2 )
 		);
-		variables[ "client" ] = createObject( "java", "java.net.http.HttpClient" )
-			.newBuilder()
-			.executor( variables.executor )
-			.connectTimeout(
-				createObject( "java", "java.time.Duration" ).ofMillis(
-					javacast( "long", settings.transportTimeout )
-				)
-			)
-			.build();
+		variables[ "http" ]   = new JavaHttp();
+		variables[ "client" ] = variables.http.createClient( variables.executor, settings.transportTimeout );
 		return this;
 	}
 	function send(
@@ -48,25 +41,16 @@ component {
 				return new Receipt( eventId = arguments.eventId, state = "dropped" );
 			}
 			try {
-				var items = arguments.items.filter( function( item ){
+				var permittedItems = arguments.items.filter( function( item ){
 					return item.type != "attachment" || !limited( "attachment" );
 				} );
-				var bytes   = encodeEnvelope( arguments.eventId, items );
-				var builder = createObject( "java", "java.net.http.HttpRequest" )
-					.newBuilder( createObject( "java", "java.net.URI" ).create( variables.endpoint ) )
-					.timeout(
-						createObject( "java", "java.time.Duration" ).ofMillis(
-							javacast( "long", variables.settings.transportTimeout )
-						)
-					)
-					.header( "X-Sentry-Auth", variables.auth )
-					.header( "Content-Type", "application/x-sentry-envelope" )
-					.POST(
-						createObject( "java", "java.net.http.HttpRequest$BodyPublishers" ).ofByteArray( bytes )
-					);
-				var future = variables.client.sendAsync(
-					builder.build(),
-					createObject( "java", "java.net.http.HttpResponse$BodyHandlers" ).discarding()
+				var bytes  = encodeEnvelope( arguments.eventId, permittedItems );
+				var future = variables.http.sendAsync(
+					variables.client,
+					variables.endpoint,
+					variables.auth,
+					bytes,
+					variables.settings.transportTimeout
 				);
 				receipt = new Receipt(
 					arguments.eventId,
@@ -119,11 +103,12 @@ component {
 	}
 	function observeResponse( required any response ){
 		lock name="sentry-response-#variables.id#" type="exclusive" timeout="2" {
-			var state = arguments.response.statusCode() >= 200 && arguments.response.statusCode() < 300 ? "accepted" : "rejected";
+			var code  = getResponseStatusCode( arguments.response );
+			var state = code >= 200 && code < 300 ? "accepted" : "rejected";
 			variables.responses[ state ]++;
 		}
-		var rateHeader = arguments.response
-			.headers()
+		var rateHeader = variables.http
+			.headers( arguments.response )
 			.firstValue( "X-Sentry-Rate-Limits" )
 			.orElse( "" );
 		for ( var entry in listToArray( rateHeader ) ) {
@@ -135,9 +120,9 @@ component {
 				}
 			}
 		}
-		if ( arguments.response.statusCode() == 429 && !len( rateHeader ) ) {
-			var retry = arguments.response
-				.headers()
+		if ( getResponseStatusCode( arguments.response ) == 429 && !len( rateHeader ) ) {
+			var retry = variables.http
+				.headers( arguments.response )
 				.firstValue( "Retry-After" )
 				.orElse( "60" );
 			var seconds = isNumeric( retry ) ? val( retry ) : 60;
@@ -161,6 +146,15 @@ component {
 			setLimit( "all", seconds );
 		}
 	}
+	function getResponseStatusCode( required any response ){
+		return variables.http.statusCode( arguments.response );
+	}
+	function isDeliveryDone( required any future ){
+		return variables.http.isDone( arguments.future );
+	}
+	function awaitResponse( required any future, required numeric timeoutMilliseconds ){
+		return variables.http.awaitResponse( arguments.future, arguments.timeoutMilliseconds );
+	}
 	private function setLimit( required string category, required numeric seconds ){
 		lock name="sentry-limits-#variables.id#" type="exclusive" timeout="2" {
 			variables.limits[ arguments.category ] = max(
@@ -170,11 +164,12 @@ component {
 		}
 	}
 	private function limited( required string category ){
-		arguments.category = {
+		var categories = {
 			"log"          : "log_item",
 			"trace_metric" : "metric",
 			"check_in"     : "monitor"
-		}[ arguments.category ] ?: arguments.category;
+		};
+		arguments.category = categories[ arguments.category ] ?: arguments.category;
 		return ( variables.limits.all ?: 0 ) > epochMillis() || ( variables.limits[ arguments.category ] ?: 0 ) > epochMillis();
 	}
 	private function reap(){
@@ -191,12 +186,14 @@ component {
 		var deadline= epochMillis() + arguments.timeoutMilliseconds;
 		var snapshot= [];
 		lock name   ="sentry-transport-#variables.id#" type="exclusive" timeout="2" {
-			snapshot = variables.pending.slice( 1 );
+			if ( !variables.pending.isEmpty() ) {
+				snapshot = variables.pending.slice( 1 );
+			}
 		}
 		for ( var receipt in snapshot ) {
 			receipt.awaitDelivery( max( 1, deadline - epochMillis() ) );
 		}
-		return snapshot.every( function( receipt ){
+		return snapshot.isEmpty() || snapshot.every( function( receipt ){
 			return receipt.getStatus() != "queued";
 		} );
 	}

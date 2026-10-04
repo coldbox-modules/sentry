@@ -1,10 +1,11 @@
 /** Handles are keyed by immutable execution IDs, never by callback thread or mutable job state. */
 component {
 
-	property name      ="sentry" inject="SentryService@sentry";
-	variables.attempts = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
-	variables.publishes= createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
-	variables.execution= createObject( "java", "java.lang.ThreadLocal" ).init();
+	property name                ="sentry" inject="SentryService@sentry";
+	variables.attempts           = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+	variables.publishes          = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+	variables.execution          = createObject( "java", "java.lang.ThreadLocal" ).init();
+	variables.observationFailures= createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
 	function onCBQJobAdded( event, interceptData ){
 		try {
 			if ( !variables.sentry.getSettings().enableQueueTracing ) {
@@ -12,9 +13,10 @@ component {
 			}
 			var job       = arguments.interceptData.job;
 			var telemetry = variables.sentry.getObservability();
-			for ( var entry in variables.publishes.entrySet() ) {
-				if ( telemetry.timestamp() - entry.getValue().created > 3600 ) {
-					var expired = variables.publishes.remove( entry.getKey() );
+			for ( var publishId in variables.publishes.keySet().toArray() ) {
+				var published = variables.publishes.get( publishId );
+				if ( !isNull( published ) && telemetry.timestamp() - published.created > 3600 ) {
+					var expired = variables.publishes.remove( publishId );
 					if ( !isNull( expired ) ) {
 						expired.span.finish( "deadline_exceeded" );
 						if ( expired.ownsRoot ) {
@@ -25,7 +27,8 @@ component {
 			}
 			var previous         = telemetry.getScope();
 			var ownsRoot         = !previous.keyExists( "span" ) || previous.span.isFinished();
-			var existingMetadata = job.getProperties()[ "__sentry" ] ?: {};
+			var properties       = job.getProperties();
+			var existingMetadata = properties.keyExists( "__sentry" ) ? properties[ "__sentry" ] : {};
 			var continued        = previous.keyExists( "span" ) ? variables.sentry.getTraceHeaders() : (
 				existingMetadata.headers ?: {}
 			);
@@ -48,7 +51,7 @@ component {
 				"publishId"  : telemetry.id()
 			};
 			telemetry.setScope( previous );
-			job.getProperties()[ "__sentry" ] = metadata;
+			properties[ "__sentry" ] = metadata;
 			try {
 				for ( var config in job.getChained() ) {
 					param config.properties         = {};
@@ -58,6 +61,7 @@ component {
 					};
 				}
 			} catch ( any unavailableChain ) {
+				variables.observationFailures.incrementAndGet();
 			}
 			if ( variables.publishes.size() < 1024 ) {
 				variables.publishes.put(
@@ -76,6 +80,7 @@ component {
 				}
 			}
 		} catch ( any ignored ) {
+			variables.observationFailures.incrementAndGet();
 		} finally {
 			if ( !isNull( local.previous ) ) {
 				telemetry.setScope( previous );
@@ -90,7 +95,9 @@ component {
 	}
 	private function finishPublish( required any job, required string status ){
 		try {
-			var state = variables.publishes.remove( arguments.job.getProperties()[ "__sentry" ].publishId ?: "" );
+			var properties = arguments.job.getProperties();
+			var metadata   = properties.keyExists( "__sentry" ) ? properties[ "__sentry" ] : {};
+			var state      = variables.publishes.remove( metadata.publishId ?: "" );
 			if ( !isNull( state ) ) {
 				state.span.setAttribute( "messaging.message.id", toString( arguments.job.getId() ) );
 				state.span.finish( arguments.status );
@@ -99,6 +106,7 @@ component {
 				}
 			}
 		} catch ( any ignored ) {
+			variables.observationFailures.incrementAndGet();
 		}
 	}
 	function onCBQJobAttemptScheduled( event, interceptData ){
@@ -108,19 +116,21 @@ component {
 			}
 			var telemetry = variables.sentry.getObservability();
 			// Bound abandoned work even if a worker never starts after a timeout/shutdown.
-			for ( var entry in variables.attempts.entrySet() ) {
-				if ( telemetry.timestamp() - entry.getValue().created > 3600 ) {
-					entry.getValue().span.finish( "deadline_exceeded" );
-					entry.getValue().root.finish( "deadline_exceeded" );
-					variables.attempts.remove( entry.getKey() );
+			for ( var executionId in variables.attempts.keySet().toArray() ) {
+				var scheduled = variables.attempts.get( executionId );
+				if ( !isNull( scheduled ) && telemetry.timestamp() - scheduled.created > 3600 ) {
+					scheduled.span.finish( "deadline_exceeded" );
+					scheduled.root.finish( "deadline_exceeded" );
+					variables.attempts.remove( executionId );
 				}
 			}
 			if ( variables.attempts.size() >= 1024 ) {
 				return;
 			}
-			var job      = arguments.interceptData.job;
-			var metadata = job.getProperties()[ "__sentry" ] ?: {};
-			var root     = telemetry.startTransaction(
+			var job        = arguments.interceptData.job;
+			var properties = job.getProperties();
+			var metadata   = properties.keyExists( "__sentry" ) ? properties[ "__sentry" ] : {};
+			var root       = telemetry.startTransaction(
 				"job " & job.getMapping(),
 				"queue.task",
 				metadata.headers ?: {},
@@ -141,6 +151,7 @@ component {
 					span.setAttribute( "messaging.batch.id", toString( job.getBatchId() ) );
 				}
 			} catch ( any unavailableBatch ) {
+				variables.observationFailures.incrementAndGet();
 			}
 			span.setAttribute( "messaging.message.retry.count", max( 0, arguments.interceptData.attempt - 1 ) );
 			span.setAttribute(
@@ -159,6 +170,7 @@ component {
 				}
 			);
 		} catch ( any ignored ) {
+			variables.observationFailures.incrementAndGet();
 		}
 	}
 	function onCBQJobExecutionStarted( event, interceptData ){
@@ -189,6 +201,7 @@ component {
 				);
 			}
 		} catch ( any ignored ) {
+			variables.observationFailures.incrementAndGet();
 		}
 	}
 	function onCBQJobExecutionExited( event, interceptData ){
@@ -211,6 +224,7 @@ component {
 				variables.attempts.remove( execution.id );
 			}
 		} catch ( any ignored ) {
+			variables.observationFailures.incrementAndGet();
 		}
 	}
 	function onCBQJobAttemptFinished( event, interceptData ){
@@ -242,10 +256,14 @@ component {
 				variables.attempts.remove( arguments.interceptData.executionId );
 			}
 		} catch ( any ignored ) {
+			variables.observationFailures.incrementAndGet();
 		}
 	}
 	function getPendingAttemptCount(){
 		return variables.attempts.size();
+	}
+	function getObservationFailureCount(){
+		return variables.observationFailures.get();
 	}
 
 }

@@ -48,6 +48,9 @@ component extends="testbox.system.BaseSpec" {
 					},
 					getMapping : function(){
 						return "SyntheticJob";
+					},
+					isBatchJob : function(){
+						return false;
 					}
 				};
 				var observation = { job : job, executionId : "attempt-1", attempt : 1 };
@@ -63,14 +66,18 @@ component extends="testbox.system.BaseSpec" {
 				expect(
 					variables.telemetry.getScope().span.toPayload().data[ "messaging.message.receive.latency" ]
 				).toBeGTE( 25 );
-				var context       = variables.service.getTraceContext();
-				var attemptSpan   = variables.telemetry.getScope().span;
+				var context           = variables.service.getTraceContext();
+				var attemptSpan       = variables.telemetry.getScope().span;
+				var observerReference = createObject( "java", "java.util.concurrent.atomic.AtomicReference" ).init(
+					interceptor
+				);
 				var callbackThread= "sentry-test-" & replace( createUUID(), "-", "", "all" );
-				thread name       =callbackThread action="run" observer=interceptor data=observation {
+				thread name       =callbackThread action="run" observer=observerReference data=observation {
 					attributes.data.status = "deadline_exceeded";
-					attributes.observer.onCBQJobAttemptFinished( {}, attributes.data );
+					attributes.observer.get().onCBQJobAttemptFinished( {}, attributes.data );
 				}
 				thread action="join" name=callbackThread timeout=5000;
+				expect( cfthread[ callbackThread ].status ).toBe( "COMPLETED" );
 				expect( attemptSpan.toPayload().status ).toBe( "deadline_exceeded" );
 				observation.status = "ok";
 				interceptor.onCBQJobAttemptFinished( {}, observation );
@@ -91,6 +98,7 @@ component extends="testbox.system.BaseSpec" {
 				expect( interceptor.getPendingAttemptCount() ).toBe( 0 );
 				expect( variables.service.getTraceContext().span_id ).toBe( prior.getContext().span_id );
 				prior.finish();
+				expect( interceptor.getObservationFailureCount() ).toBe( 0 );
 			} );
 			it( "persists trace context for chained publication after callback scope cleanup", function(){
 				var observer = createMock( "sentry.interceptors.QueueObservability" ).$property(
@@ -130,6 +138,7 @@ component extends="testbox.system.BaseSpec" {
 				observer.onCBQJobPublished( {}, { job : nextJob } );
 				expect( variables.telemetry.getScope().isEmpty() ).toBeTrue();
 				root.finish();
+				expect( observer.getObservationFailureCount() ).toBe( 0 );
 			} );
 			it( "finishes a redirected request once and restores the previous scope", function(){
 				var previous = { "test" : true };
@@ -188,11 +197,16 @@ component extends="testbox.system.BaseSpec" {
 				var root     = variables.service.startTransaction( "listener error" );
 				variables.telemetry.setScope( { span : root } );
 				listener.before( {}, { sql : "SELECT 'PRIVATE' AS id" } );
-				var failure = { type : "database", message : "original failure" };
+				var failure = {};
+				try {
+					throw( type = "SentryTest.QueryFailure", message = "original failure" );
+				} catch ( SentryTest.QueryFailure original ) {
+					failure = original;
+				}
 				try {
 					listener.error( {}, {}, {}, failure );
 					fail( "Failure must reach the caller" );
-				} catch ( database caught ) {
+				} catch ( SentryTest.QueryFailure caught ) {
 					expect( caught.message ).toBe( failure.message );
 				}
 				expect( root.getChildren()[ 1 ].toPayload().status ).toBe( "internal_error" );

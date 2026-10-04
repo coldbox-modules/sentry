@@ -34,8 +34,9 @@ component {
 	this.mappings[ "/moduleroot" ]            = moduleRootPath;
 	this.mappings[ "/#request.MODULE_NAME#" ] = reReplaceNoCase( rootPath, "test-harness(\\|/)", "" );
 	this.mappings[ "/moduleroot/sentry" ]     = this.mappings[ "/sentry" ];
-	if ( len( getSystemSetting( "SENTRY_CBQ_SOURCE", "" ) ) ) {
-		this.mappings[ "/cbq" ] = getSystemSetting( "SENTRY_CBQ_SOURCE" );
+	cbqSource                                 = createObject( "java", "java.lang.System" ).getenv( "SENTRY_CBQ_SOURCE" );
+	if ( !isNull( cbqSource ) && len( cbqSource ) ) {
+		this.mappings[ "/cbq" ] = cbqSource;
 	}
 	this.mappings[ "/dependencies" ] = this.mappings[ "/sentry" ] & "/modules";
 
@@ -56,6 +57,9 @@ component {
 			try {
 				request.coldBoxVirtualApp.shutdown();
 			} catch ( any incompleteStartup ) {
+				createObject( "java", "java.lang.System" ).err.println(
+					"Test harness cleanup failed: " & incompleteStartup.message
+				);
 			}
 			structDelete( application, "cbController" );
 			structDelete( application, "wirebox" );

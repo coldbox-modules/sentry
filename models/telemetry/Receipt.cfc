@@ -21,7 +21,7 @@ component {
 		return variables.id;
 	}
 	function getStatus(){
-		if ( variables.state == "queued" && variables.future.isDone() ) {
+		if ( variables.state == "queued" && variables.transport.isDeliveryDone( variables.future ) ) {
 			awaitDelivery( 1 );
 		}
 		return variables.state;
@@ -38,18 +38,15 @@ component {
 			return this;
 		}
 		try {
-			var response = variables.future.get(
-				javacast( "long", arguments.timeoutMilliseconds ),
-				createObject( "java", "java.util.concurrent.TimeUnit" ).MILLISECONDS
-			);
-			variables[ "code" ]  = response.statusCode();
+			var response         = variables.transport.awaitResponse( variables.future, arguments.timeoutMilliseconds );
+			variables[ "code" ]  = variables.transport.getResponseStatusCode( response );
 			variables[ "state" ] = variables.code >= 200 && variables.code < 300 ? "accepted" : "rejected";
 			if ( variables.observed.compareAndSet( false, true ) ) {
 				variables.transport.observeResponse( response );
 			}
 		} catch ( any failure ) {
 			// A wait timeout leaves the request pending; network failures complete it.
-			if ( variables.future.isDone() ) {
+			if ( variables.transport.isDeliveryDone( variables.future ) ) {
 				variables[ "state" ] = "failed";
 			}
 		}

@@ -10,6 +10,21 @@ component extends="testbox.system.BaseSpec" {
 			afterEach( function(){
 				receiver();
 			} );
+			it( "flushes and shuts down with no pending envelopes", function(){
+				var service = new sentry.models.SentryService( { DSN : "http://public@127.0.0.1:60320/1" } );
+				try {
+					expect( service.flush() ).toBeTrue();
+				} finally {
+					expect( service.shutdown() ).toBeTrue();
+				}
+				expect(
+					service
+						.getObservability()
+						.getTransport()
+						.getDiagnostics()
+						.closed
+				).toBeTrue();
+			} );
 			it( "distinguishes rejected delivery and honors category rate limits", function(){
 				receiver( {
 					"status"  : 429,

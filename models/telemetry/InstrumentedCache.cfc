@@ -23,14 +23,14 @@ component {
 		required struct args,
 		boolean lookup = false
 	){
-		var method = arguments.method;
-		var params = arguments.args;
-		var lookup = arguments.lookup;
+		var providerMethod = arguments.method;
+		var params         = arguments.args;
+		var isLookup       = arguments.lookup;
 		return variables.telemetry.withSpan(
 			"cache read",
 			function( span ){
-				var value = invoke( variables.provider, method, params );
-				var hit   = lookup ? value : !isNull( value );
+				var value = invoke( variables.provider, providerMethod, params );
+				var hit   = isLookup ? value : !isNull( value );
 				span.setAttribute( "cache.hit", hit );
 				variables.telemetry.counter(
 					"cache.read",
@@ -66,12 +66,12 @@ component {
 		required struct args,
 		required string op
 	){
-		var method = arguments.method;
-		var params = arguments.args;
+		var providerMethod = arguments.method;
+		var params         = arguments.args;
 		return variables.telemetry.withSpan(
 			"cache write",
 			function( span ){
-				var result = invoke( variables.provider, method, params );
+				var result = invoke( variables.provider, providerMethod, params );
 				span.setAttribute( "cache.write", true );
 				return result;
 			},

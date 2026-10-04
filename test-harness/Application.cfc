@@ -4,7 +4,7 @@ Copyright 2005-2007 ColdBox Framework by Luis Majano and Ortus Solutions, Corp
 www.ortussolutions.com
 ********************************************************************************
 */
-component{
+component {
 
 	// UPDATE THE NAME OF THE MODULE IN TESTING BELOW
 	request.MODULE_NAME = "sentry";
@@ -12,53 +12,65 @@ component{
 	// Application properties
 	this.name              = hash( getCurrentTemplatePath() );
 	this.sessionManagement = true;
-	this.sessionTimeout    = createTimeSpan(0,0,15,0);
-    this.setClientCookies  = true;
+	this.sessionTimeout    = createTimespan( 0, 0, 15, 0 );
+	this.setClientCookies  = true;
 
-    /**************************************
+	/**************************************
 	LUCEE Specific Settings
 	**************************************/
 	// buffer the output of a tag/function body to output in case of a exception
-	this.bufferOutput 					= true;
+	this.bufferOutput                   = true;
 	// Activate Gzip Compression
-	this.compression 					= false;
+	this.compression                    = false;
 	// Turn on/off white space managemetn
-	this.whiteSpaceManagement 			= "smart";
+	this.whiteSpaceManagement           = "smart";
 	// Turn on/off remote cfc content whitespace
 	this.suppressRemoteComponentContent = false;
 
 	// COLDBOX STATIC PROPERTY, DO NOT CHANGE UNLESS THIS IS NOT THE ROOT OF YOUR COLDBOX APP
-	COLDBOX_APP_ROOT_PATH       = getDirectoryFromPath( getCurrentTemplatePath() );
+	COLDBOX_APP_ROOT_PATH = getDirectoryFromPath( getCurrentTemplatePath() );
 	// The web server mapping to this application. Used for remote purposes or static purposes
-	COLDBOX_APP_MAPPING         = "";
+	COLDBOX_APP_MAPPING   = "";
 	// COLDBOX PROPERTIES
-	COLDBOX_CONFIG_FILE 	    = "";
+	COLDBOX_CONFIG_FILE   = "";
 	// COLDBOX APPLICATION KEY OVERRIDE
-	COLDBOX_APP_KEY 		    = "";
+	COLDBOX_APP_KEY       = "";
 
-    // Mappings
+	// Mappings
 	this.mappings[ "/root" ] = COLDBOX_APP_ROOT_PATH;
 
 	// Map back to its root
-	moduleRootPath 	= REReplaceNoCase( this.mappings[ "/root" ], "#request.MODULE_NAME#(\\|/)test-harness(\\|/)", "" );
-	modulePath 		= REReplaceNoCase( this.mappings[ "/root" ], "test-harness(\\|/)", "" );
+	moduleRootPath = reReplaceNoCase(
+		this.mappings[ "/root" ],
+		"#request.MODULE_NAME#(\\|/)test-harness(\\|/)",
+		""
+	);
+	modulePath = reReplaceNoCase(
+		this.mappings[ "/root" ],
+		"test-harness(\\|/)",
+		""
+	);
 
 	// Module Root + Path Mappings
-	this.mappings[ "/moduleroot" ] = moduleRootPath;
-	this.mappings[ "/moduleroot/sentry" ] = modulePath;
-	this.mappings[ "/dependencies" ] = this.mappings[ "/sentry" ] & "/modules";
+	this.mappings[ "/moduleroot" ]            = moduleRootPath;
+	this.mappings[ "/moduleroot/sentry" ]     = modulePath;
 	this.mappings[ "/#request.MODULE_NAME#" ] = modulePath;
+	this.mappings[ "/dependencies" ]          = modulePath & "/modules";
 
 	// application start
 	public boolean function onApplicationStart(){
-		application.cbBootstrap = new coldbox.system.Bootstrap( COLDBOX_CONFIG_FILE, COLDBOX_APP_ROOT_PATH, COLDBOX_APP_KEY, COLDBOX_APP_MAPPING );
+		application.cbBootstrap = new coldbox.system.Bootstrap(
+			COLDBOX_CONFIG_FILE,
+			COLDBOX_APP_ROOT_PATH,
+			COLDBOX_APP_KEY,
+			COLDBOX_APP_MAPPING
+		);
 		application.cbBootstrap.loadColdbox();
 		return true;
 	}
 
 	// request start
-	public boolean function onRequestStart(String targetPage){
-
+	public boolean function onRequestStart( String targetPage ){
 		// Process ColdBox Request
 		application.cbBootstrap.onRequestStart( arguments.targetPage );
 
@@ -70,11 +82,11 @@ component{
 	}
 
 	public void function onSessionEnd( struct sessionScope, struct appScope ){
-		arguments.appScope.cbBootStrap.onSessionEnd( argumentCollection=arguments );
+		arguments.appScope.cbBootStrap.onSessionEnd( argumentCollection = arguments );
 	}
 
 	public boolean function onMissingTemplate( template ){
-		return application.cbBootstrap.onMissingTemplate( argumentCollection=arguments );
+		return application.cbBootstrap.onMissingTemplate( argumentCollection = arguments );
 	}
 
 }

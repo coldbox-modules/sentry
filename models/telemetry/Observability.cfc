@@ -468,7 +468,7 @@ component {
 		boolean cached         = false,
 		boolean queryOfQueries = false
 	){
-		var callback = arguments.callback;
+		var queryCallback = arguments.callback;
 		return withSpan(
 			scrubSQL( arguments.sql ),
 			function( span ){
@@ -477,7 +477,7 @@ component {
 				next.manualQuerySpan = span;
 				setScope( next );
 				try {
-					return callback( span );
+					return queryCallback( span );
 				} finally {
 					setScope( previous );
 				}
@@ -495,13 +495,13 @@ component {
 		required function callback,
 		string method = "GET"
 	){
-		var destination = safeURL( arguments.url );
-		var headers     = getTraceHeaders( arguments.url );
-		var callback    = arguments.callback;
+		var destination  = safeURL( arguments.url );
+		var headers      = getTraceHeaders( arguments.url );
+		var httpCallback = arguments.callback;
 		return withSpan(
 			arguments.method & " " & destination,
 			function( span ){
-				return callback( span, headers );
+				return httpCallback( span, headers );
 			},
 			"http.client",
 			{
@@ -804,7 +804,7 @@ component {
 		);
 	}
 	function safeName( required string name ){
-		var name = reReplaceNoCase(
+		var sanitizedName = reReplaceNoCase(
 			arguments.name,
 			"[a-f0-9]{8}-[a-f0-9-]{27,}|/[0-9]+(?=/|$)",
 			"/:id",
@@ -812,7 +812,7 @@ component {
 		);
 		return left(
 			reReplace(
-				listFirst( listFirst( name, "?" ), "##" ),
+				listFirst( listFirst( sanitizedName, "?" ), "##" ),
 				"[\r\n]",
 				"",
 				"all"
