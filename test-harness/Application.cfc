@@ -45,6 +45,8 @@ component{
 
 	// Module Root + Path Mappings
 	this.mappings[ "/moduleroot" ] = moduleRootPath;
+	this.mappings[ "/moduleroot/sentry" ] = modulePath;
+	this.mappings[ "/dependencies" ] = this.mappings[ "/sentry" ] & "/modules";
 	this.mappings[ "/#request.MODULE_NAME#" ] = modulePath;
 
 	// application start

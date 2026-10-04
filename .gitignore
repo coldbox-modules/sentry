@@ -21,3 +21,13 @@ test-harness/.env
 # Local server configs (test artifacts)
 server-sentry-*.json
 test-harness/server-sentry-*.json
+
+/modules
+/test-harness/coldbox
+/test-harness/testbox
+/test-harness/sentry
+/browser/node_modules/
+
+/test-harness/provider-feedback.html
+/test-harness/tests/provider-proof.cfm
+/test-harness/lucee-local-cache/
