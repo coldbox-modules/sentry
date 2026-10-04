@@ -54,7 +54,15 @@ component extends="testbox.system.BaseSpec" {
 				var prior       = variables.service.startTransaction( "request" );
 				variables.telemetry.setScope( { span : prior } );
 				interceptor.onCBQJobAttemptScheduled( {}, observation );
+				var scheduledAt = variables.telemetry.timestamp();
+				sleep( 40 );
 				interceptor.onCBQJobExecutionStarted( {}, observation );
+				expect( variables.telemetry.getScope().span.toPayload().start_timestamp - scheduledAt ).toBeGTE(
+					0.025
+				);
+				expect(
+					variables.telemetry.getScope().span.toPayload().data[ "messaging.message.receive.latency" ]
+				).toBeGTE( 25 );
 				var context       = variables.service.getTraceContext();
 				var attemptSpan   = variables.telemetry.getScope().span;
 				var callbackThread= "sentry-test-" & replace( createUUID(), "-", "", "all" );
@@ -70,7 +78,55 @@ component extends="testbox.system.BaseSpec" {
 				interceptor.onCBQJobExecutionExited( {}, observation );
 				expect( variables.service.getTraceContext().span_id ).toBe( prior.getContext().span_id );
 				expect( interceptor.getPendingAttemptCount() ).toBe( 0 );
+				observation.executionId = "attempt-2";
+				observation.attempt     = 2;
+				interceptor.onCBQJobAttemptScheduled( {}, observation );
+				interceptor.onCBQJobExecutionStarted( {}, observation );
+				var retrySpan = variables.telemetry.getScope().span;
+				expect( retrySpan.toPayload().data[ "messaging.retry.count" ] ).toBe( 1 );
+				interceptor.onCBQJobExecutionExited( {}, observation );
+				observation.status = "cancelled";
+				interceptor.onCBQJobAttemptFinished( {}, observation );
+				expect( retrySpan.toPayload().status ).toBe( "cancelled" );
+				expect( interceptor.getPendingAttemptCount() ).toBe( 0 );
+				expect( variables.service.getTraceContext().span_id ).toBe( prior.getContext().span_id );
 				prior.finish();
+			} );
+			it( "persists trace context for chained publication after callback scope cleanup", function(){
+				var observer = createMock( "sentry.interceptors.QueueObservability" ).$property(
+					"sentry",
+					"variables",
+					variables.service
+				);
+				var props = {};
+				var chain = [ { properties : {} } ];
+				var job   = {
+					getProperties : () => props,
+					getQueue      : () => "synthetic",
+					getChained    : () => chain
+				};
+				var root = variables.service.startTransaction( "chain request" );
+				variables.telemetry.setScope( { span : root } );
+				observer.onCBQJobAdded( {}, { job : job } );
+				var initial = props[ "__sentry" ].headers[ "sentry-trace" ];
+				expect( chain[ 1 ].properties[ "__sentry" ].headers[ "sentry-trace" ] ).toBe( initial );
+				observer.onCBQJobPublished( {}, { job : job } );
+				expect( root.getChildren().len() ).toBe( 1 );
+				variables.telemetry.clearScope();
+				var continuation = chain[ 1 ].properties;
+				var nextJob      = {
+					getProperties : () => continuation,
+					getQueue      : () => "synthetic",
+					getChained    : () => []
+				};
+				observer.onCBQJobAdded( {}, { job : nextJob } );
+				expect( continuation[ "__sentry" ].headers[ "sentry-trace" ] ).notToBe( initial );
+				expect( continuation[ "__sentry" ].headers[ "sentry-trace" ].left( 32 ) ).toBe(
+					root.getContext().trace_id
+				);
+				observer.onCBQJobPublished( {}, { job : nextJob } );
+				expect( variables.telemetry.getScope().isEmpty() ).toBeTrue();
+				root.finish();
 			} );
 			it( "finishes a redirected request once and restores the previous scope", function(){
 				var previous = { "test" : true };

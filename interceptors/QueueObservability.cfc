@@ -23,10 +23,17 @@ component {
 					}
 				}
 			}
-			var previous = telemetry.getScope();
-			var root     = previous.keyExists( "span" ) ? previous.span : telemetry.startTransaction(
+			var previous         = telemetry.getScope();
+			var ownsRoot         = !previous.keyExists( "span" ) || previous.span.isFinished();
+			var existingMetadata = job.getProperties()[ "__sentry" ] ?: {};
+			var continued        = previous.keyExists( "span" ) ? variables.sentry.getTraceHeaders() : (
+				existingMetadata.headers ?: {}
+			);
+			var root = !ownsRoot ? previous.span : telemetry.startTransaction(
 				"publish " & ( job.getQueue() ?: "default" ),
-				"queue.task"
+				"queue.task",
+				continued,
+				true
 			);
 			telemetry.setScope( { "span" : root } );
 			var publish = telemetry.startSpan(
@@ -42,19 +49,29 @@ component {
 			};
 			telemetry.setScope( previous );
 			job.getProperties()[ "__sentry" ] = metadata;
+			try {
+				for ( var config in job.getChained() ) {
+					param config.properties         = {};
+					config.properties[ "__sentry" ] = {
+						"headers"    : metadata.headers,
+						"enqueuedAt" : metadata.enqueuedAt
+					};
+				}
+			} catch ( any unavailableChain ) {
+			}
 			if ( variables.publishes.size() < 1024 ) {
 				variables.publishes.put(
 					metadata.publishId,
 					{
 						"span"     : publish,
 						"root"     : root,
-						"ownsRoot" : !previous.keyExists( "span" ),
+						"ownsRoot" : ownsRoot,
 						"created"  : telemetry.timestamp()
 					}
 				);
 			} else {
 				publish.finish( "resource_exhausted" );
-				if ( !previous.keyExists( "span" ) ) {
+				if ( ownsRoot ) {
 					root.finish( "resource_exhausted" );
 				}
 			}
@@ -118,6 +135,12 @@ component {
 			}
 			span.setAttribute( "messaging.destination.name", job.getQueue() ?: "default" );
 			span.setAttribute( "messaging.message.id", toString( job.getId() ) );
+			try {
+				if ( job.isBatchJob() ) {
+					span.setAttribute( "messaging.batch.id", toString( job.getBatchId() ) );
+				}
+			} catch ( any unavailableBatch ) {
+			}
 			span.setAttribute( "messaging.retry.count", max( 0, arguments.interceptData.attempt - 1 ) );
 			span.setAttribute(
 				"messaging.message.receive.latency",
@@ -126,10 +149,12 @@ component {
 			variables.attempts.putIfAbsent(
 				arguments.interceptData.executionId,
 				{
-					"span"    : span,
-					"root"    : root,
-					"exited"  : false,
-					"created" : telemetry.timestamp()
+					"span"       : span,
+					"root"       : root,
+					"exited"     : false,
+					"created"    : telemetry.timestamp(),
+					"enqueuedAt" : metadata.enqueuedAt ?: telemetry.timestamp(),
+					"started"    : 0
 				}
 			);
 		} catch ( any ignored ) {
@@ -150,6 +175,18 @@ component {
 			} );
 			variables.execution.set( stack );
 			telemetry.setScope( { "span" : attempt.span } );
+			var startedAt = telemetry.timestamp();
+			if ( attempt.span.markStarted( startedAt ) ) {
+				attempt.started = startedAt;
+				var waitTime    = max( 0, ( startedAt - attempt.enqueuedAt ) * 1000 );
+				attempt.span.setAttribute( "messaging.message.receive.latency", waitTime );
+				variables.sentry.distribution(
+					"queue.wait.duration",
+					waitTime,
+					{},
+					"millisecond"
+				);
+			}
 		} catch ( any ignored ) {
 		}
 	}
@@ -191,7 +228,7 @@ component {
 					variables.sentry.counter( "queue.attempts", 1, { "outcome" : status } );
 					variables.sentry.distribution(
 						"queue.processing.duration",
-						( telemetry.timestamp() - attempt.created ) * 1000,
+						attempt.started > 0 ? ( telemetry.timestamp() - attempt.started ) * 1000 : 0,
 						{ "outcome" : status },
 						"millisecond"
 					);

@@ -422,6 +422,8 @@ component {
 		boolean wait             = false
 	){
 		var data           = baseEvent();
+		data[ "type" ]     = "feedback";
+		data[ "level" ]    = "info";
 		data[ "contexts" ] = {
 			"feedback" : {
 				"message" : trim( arguments.message ),

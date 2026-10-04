@@ -66,6 +66,17 @@ component {
 			variables.children.add( arguments.child );
 		}
 	}
+	/** Queue execution starts on the worker, which may be later than scheduling. */
+	function markStarted( required numeric timestamp ){
+		lock name="sentry-span-#variables.id#" type="exclusive" timeout="2" throwOnTimeout="false" {
+			if ( isFinished() ) {
+				return false;
+			}
+			variables.data[ "start_timestamp" ] = arguments.timestamp;
+		}
+		return true;
+	}
+
 	function finish( string status = "" ){
 		lock name="sentry-span-#variables.id#" type="exclusive" timeout="2" throwOnTimeout="false" {
 			if ( !variables.done.compareAndSet( false, true ) ) {

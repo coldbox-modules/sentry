@@ -31,3 +31,5 @@ test-harness/server-sentry-*.json
 /test-harness/provider-feedback.html
 /test-harness/tests/provider-proof.cfm
 /test-harness/lucee-local-cache/
+
+/test-harness/tests/provider-feedback-native.cfm
