@@ -33,3 +33,5 @@ Queue regression checks also verify worker-start timestamps, wait time excluding
 Native BoxLang/CFML captureFeedback with the captured 61,900-byte PNG received HTTP 200 for event 14625ba2371241fbb0f651fcfe3e80e2. Sentry indexed attachment 24792376268 as sentry-verification.png, image/png, 61,900 bytes; this confirms binary attachment recognition independently of the HTTP receipt. Browser feedback visibility and replay playback were verified in the frontend project; the native feedback entry itself was not inspected in the backend feedback UI.
 
 Standalone browser spans also use beforeSendSpan sanitization, including clients supplied by consumers. This removes interaction selectors and unapproved attributes even when the SDK sends a span outside a transaction envelope.
+
+An untargeted qb harness run also passed 3,356 specs, failed one timestamp/default-value expectation (UTC versus local time), and errored on 28 specs using unavailable evaluate/isBoxLang/URL encoding helpers or toStartWith matchers in this harness. These broader compatibility checks are not qualified; the explicitly selected failure-hook specs passed 2/2. No complete qb-suite pass is claimed.
