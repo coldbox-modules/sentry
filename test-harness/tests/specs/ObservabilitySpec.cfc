@@ -50,6 +50,42 @@ component extends="testbox.system.BaseSpec" {
 				expect( root.finish( "internal_error" ) ).toBeFalse();
 				expect( root.toPayload().status ).toBe( "ok" );
 			} );
+			it( "preserves callback results and failures when span completion fails", function(){
+				var telemetry = prepareMock( variables.telemetry );
+				var previous  = { test : true };
+				telemetry.setScope( previous );
+				var brokenSpan = {
+					setStatus : function(){
+					},
+					finish : function(){
+						throw( type = "TelemetryCompletionFailure", message = "synthetic completion failure" );
+					}
+				};
+				telemetry.$( "startSpan", brokenSpan );
+				telemetry.$( "startTransaction", brokenSpan );
+				expect(
+					telemetry.withSpan( "test", function(){
+						return 42;
+					} )
+				).toBe( 42 );
+				expect(
+					telemetry.withTraceContext( {}, function(){
+						return 43;
+					} )
+				).toBe( 43 );
+				expect( function(){
+					telemetry.withSpan( "test", function(){
+						throw( type = "OriginalFailure", message = "original" );
+					} );
+				} ).toThrow( "OriginalFailure" );
+				expect( function(){
+					telemetry.withTraceContext( {}, function(){
+						throw( type = "OriginalFailure", message = "original" );
+					} );
+				} ).toThrow( "OriginalFailure" );
+				expect( telemetry.getScope() ).toBe( previous );
+				expect( telemetry.getCompletionFailureCount() ).toBe( 4 );
+			} );
 			it( "propagates to exact trusted origins only", function(){
 				variables.telemetry.setScope( { span : variables.service.startTransaction( "task" ) } );
 				expect( variables.service.getTraceHeaders( "https://api.example.test/path?token=secret" ) ).notToBeEmpty();

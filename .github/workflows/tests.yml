@@ -99,7 +99,7 @@ jobs:
       - name: Start ${{ matrix.cfengine }} Server
         run: |
           box server start serverConfigFile="server-${{ matrix.cfengine }}.json" --noSaveSettings --debug
-          curl --fail http://127.0.0.1:60299/health.cfm
+          curl --fail-with-body http://127.0.0.1:60299/health.cfm
 
       - name: Run Tests
         run: |

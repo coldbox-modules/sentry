@@ -627,7 +627,7 @@ component accessors=true singleton threadSafe {
 			};
 
 			// The name of the function being called
-			var functionName = functionLineNums.findTagContextFunction( thisTCItem );
+			var functionName = sourceCtx.available ? functionLineNums.findTagContextFunction( thisTCItem ) : "";
 			if ( len( functionName ) ) {
 				thisStackItem[ "function" ] = functionName;
 			}
@@ -877,10 +877,13 @@ component accessors=true singleton threadSafe {
 		var result = {
 			"pre_context"  : [],
 			"context_line" : "",
-			"post_context" : []
+			"post_context" : [],
+			"available"    : false
 		};
 
-		if ( !fileExists( arguments.templatePath ) ) {
+		// Treat trace paths as local files, never as CF virtual-filesystem schemes.
+		var sourceFile = createObject( "java", "java.io.File" ).init( arguments.templatePath );
+		if ( !sourceFile.isFile() ) {
 			return result;
 		}
 
@@ -890,6 +893,7 @@ component accessors=true singleton threadSafe {
 			arrayAppend( fileArray, fileReadLine( f ) );
 		}
 		fileClose( f );
+		result.available = true;
 
 		var fileLen = arrayLen( fileArray );
 

@@ -5,7 +5,10 @@ component {
 		variables[ "owner" ]    = arguments.owner;
 		variables[ "settings" ] = arguments.settings;
 		variables.settings.append( defaults(), false );
-		variables[ "scope" ]     = createObject( "java", "java.lang.ThreadLocal" ).init();
+		variables[ "scope" ]              = createObject( "java", "java.lang.ThreadLocal" ).init();
+		variables[ "completionFailures" ] = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init(
+			0
+		);
 		variables[ "sequence" ]  = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
 		variables[ "transport" ] = new EnvelopeTransport(
 			variables.settings,
@@ -239,10 +242,7 @@ component {
 			rethrow;
 		} finally {
 			setScope( previous );
-			try {
-				span.finish();
-			} catch ( any ignored ) {
-			}
+			finishSafely( span );
 		}
 	}
 	function withTraceContext(
@@ -266,11 +266,18 @@ component {
 			rethrow;
 		} finally {
 			setScope( previous );
-			try {
-				span.finish();
-			} catch ( any ignored ) {
-			}
+			finishSafely( span );
 		}
+	}
+	private function finishSafely( required any span ){
+		try {
+			arguments.span.finish();
+		} catch ( any unavailable ) {
+			variables.completionFailures.incrementAndGet();
+		}
+	}
+	function getCompletionFailureCount(){
+		return variables.completionFailures.get();
 	}
 	function getTraceHeaders( string url = "" ){
 		if ( len( arguments.url ) && !isPropagationTarget( arguments.url ) ) {
