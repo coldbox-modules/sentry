@@ -109,7 +109,7 @@ component {
 		);
 	}
 	private function normalizeKey( required any key ){
-		return "sha256:" & left( lCase( hash( toString( arguments.key ), "SHA-256" ) ), 16 );
+		return [ "sha256:" & left( lCase( hash( toString( arguments.key ), "SHA-256" ) ), 16 ) ];
 	}
 	function onMissingMethod( required string missingMethodName, required struct missingMethodArguments ){
 		return invoke(

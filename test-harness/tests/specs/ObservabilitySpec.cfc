@@ -87,10 +87,17 @@ component extends="testbox.system.BaseSpec" {
 				).toHaveLength( 1 );
 			} );
 			it( "buffers structured logs and trace metrics and matches check-ins", function(){
+				var safe = variables.telemetry.sanitizeAttributes( {
+					"cache.key"   : [ "sha256:synthetic", { "password" : "secret" } ],
+					"other.array" : [ "secret" ],
+					"db.bindings" : [ "secret" ]
+				} );
+				expect( safe ).toHaveLength( 1 );
+				expect( safe[ "cache.key" ] ).toBe( [ "sha256:synthetic" ] );
 				variables.service.captureLog(
 					"Synthetic operation",
 					"info",
-					{ outcome : "ok" }
+					{ outcome : "ok", "cache.key" : [ "sha256:synthetic" ] }
 				);
 				variables.service.counter( "request.count" );
 				variables.service.gauge( "queue.depth", 3 );

@@ -741,6 +741,19 @@ component {
 	function sanitizeAttributes( required struct attributes ){
 		var result = {};
 		for ( var key in arguments.attributes ) {
+			// Sentry's cache convention uses an array. Keep this exception narrow:
+			// arbitrary structures, bindings and cached values remain excluded.
+			if ( key == "cache.key" && isArray( arguments.attributes[ key ] ) ) {
+				var keys = [];
+				for ( var item in arguments.attributes[ key ] ) {
+					if ( !isSimpleValue( item ) || keys.len() >= 100 ) {
+						continue;
+					}
+					keys.append( sanitizeText( left( toString( item ), 512 ) ) );
+				}
+				result[ key ] = keys;
+				continue;
+			}
 			if (
 				reFindNoCase(
 					"password|token|secret|authorization|cookie|binding|payload|body|email|username|card|bank|result",
@@ -769,6 +782,10 @@ component {
 		safe[ "sentry.environment" ] = variables.settings.environment;
 		safe[ "sentry.release" ]     = variables.settings.release;
 		for ( var key in safe ) {
+			// Logs and trace metrics have scalar typed attributes only.
+			if ( !isSimpleValue( safe[ key ] ) ) {
+				continue;
+			}
 			result[ key ] = {
 				"type" : isBoolean( safe[ key ] ) && !isNumeric( safe[ key ] ) ? "boolean" : (
 					isNumeric( safe[ key ] ) ? "double" : "string"

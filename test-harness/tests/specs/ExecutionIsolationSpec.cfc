@@ -83,7 +83,7 @@ component extends="testbox.system.BaseSpec" {
 				interceptor.onCBQJobAttemptScheduled( {}, observation );
 				interceptor.onCBQJobExecutionStarted( {}, observation );
 				var retrySpan = variables.telemetry.getScope().span;
-				expect( retrySpan.toPayload().data[ "messaging.retry.count" ] ).toBe( 1 );
+				expect( retrySpan.toPayload().data[ "messaging.message.retry.count" ] ).toBe( 1 );
 				interceptor.onCBQJobExecutionExited( {}, observation );
 				observation.status = "cancelled";
 				interceptor.onCBQJobAttemptFinished( {}, observation );
@@ -101,6 +101,7 @@ component extends="testbox.system.BaseSpec" {
 				var props = {};
 				var chain = [ { properties : {} } ];
 				var job   = {
+					getId         : () => "synthetic-first",
 					getProperties : () => props,
 					getQueue      : () => "synthetic",
 					getChained    : () => chain
@@ -112,9 +113,11 @@ component extends="testbox.system.BaseSpec" {
 				expect( chain[ 1 ].properties[ "__sentry" ].headers[ "sentry-trace" ] ).toBe( initial );
 				observer.onCBQJobPublished( {}, { job : job } );
 				expect( root.getChildren().len() ).toBe( 1 );
+				expect( root.getChildren()[ 1 ].toPayload().data[ "messaging.message.id" ] ).toBe( "synthetic-first" );
 				variables.telemetry.clearScope();
 				var continuation = chain[ 1 ].properties;
 				var nextJob      = {
+					getId         : () => "synthetic-next",
 					getProperties : () => continuation,
 					getQueue      : () => "synthetic",
 					getChained    : () => []
@@ -174,6 +177,9 @@ component extends="testbox.system.BaseSpec" {
 				expect( cache.getCacheID() ).toBe( "original" );
 				for ( var child in root.getChildren() ) {
 					expect( child.toPayload().data[ "cache.hit" ] ).toBeTrue();
+					expect( child.toPayload().data[ "cache.key" ] ).toBeArray();
+					expect( child.toPayload().data[ "cache.key" ][ 1 ] ).toInclude( "sha256:" );
+					expect( child.toPayload().data ).notToHaveKey( "cache.item_size" );
 				}
 				root.finish();
 			} );

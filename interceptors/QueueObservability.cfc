@@ -92,6 +92,7 @@ component {
 		try {
 			var state = variables.publishes.remove( arguments.job.getProperties()[ "__sentry" ].publishId ?: "" );
 			if ( !isNull( state ) ) {
+				state.span.setAttribute( "messaging.message.id", toString( arguments.job.getId() ) );
 				state.span.finish( arguments.status );
 				if ( state.ownsRoot ) {
 					state.root.finish( arguments.status );
@@ -141,7 +142,7 @@ component {
 				}
 			} catch ( any unavailableBatch ) {
 			}
-			span.setAttribute( "messaging.retry.count", max( 0, arguments.interceptData.attempt - 1 ) );
+			span.setAttribute( "messaging.message.retry.count", max( 0, arguments.interceptData.attempt - 1 ) );
 			span.setAttribute(
 				"messaging.message.receive.latency",
 				max( 0, ( telemetry.timestamp() - ( metadata.enqueuedAt ?: telemetry.timestamp() ) ) * 1000 )
