@@ -38,7 +38,7 @@ component {
 			variables.apidDocsDir
 		].each( function( item ){
 			if ( directoryExists( item ) ) {
-				directoryDelete( item, true );
+				deleteBuildTree( item );
 			}
 			// Create directories
 			directoryCreate( item, true, true );
@@ -48,6 +48,23 @@ component {
 		fileSystemUtil.createMapping( "coldbox", variables.cwd & "test-harness/coldbox" );
 
 		return this;
+	}
+
+	/** Delete build files without traversing symlinks into another checkout. */
+	private function deleteBuildTree( required string path ){
+		var files  = createObject( "java", "java.nio.file.Files" );
+		var root   = createObject( "java", "java.io.File" ).init( arguments.path ).toPath();
+		var stream = files.walk( root, javacast( "java.nio.file.FileVisitOption[]", [] ) );
+		try {
+			var iterator = stream
+				.sorted( createObject( "java", "java.util.Comparator" ).reverseOrder() )
+				.iterator();
+			while ( iterator.hasNext() ) {
+				files.deleteIfExists( iterator.next() );
+			}
+		} finally {
+			stream.close();
+		}
 	}
 
 	/**
@@ -259,8 +276,7 @@ component {
 				var isExcluded = false;
 				variables.excludes.each( function( item ){
 					if (
-						path
-							.replaceNoCase( variables.cwd, "", "all" )
+						path.replaceNoCase( variables.cwd, "", "all" )
 							.reReplace( "^/+", "" )
 							.reFindNoCase( item )
 					) {

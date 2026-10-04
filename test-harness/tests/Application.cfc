@@ -34,8 +34,10 @@ component {
 	this.mappings[ "/moduleroot" ]            = moduleRootPath;
 	this.mappings[ "/#request.MODULE_NAME#" ] = reReplaceNoCase( rootPath, "test-harness(\\|/)", "" );
 	this.mappings[ "/moduleroot/sentry" ]     = this.mappings[ "/sentry" ];
-	this.mappings[ "/cbq" ]                   = getSystemSetting( "SENTRY_CBQ_SOURCE", this.mappings[ "/sentry" ] & "/.tmp/cbq" );
-	this.mappings[ "/dependencies" ]          = this.mappings[ "/sentry" ] & "/modules";
+	if ( len( getSystemSetting( "SENTRY_CBQ_SOURCE", "" ) ) ) {
+		this.mappings[ "/cbq" ] = getSystemSetting( "SENTRY_CBQ_SOURCE" );
+	}
+	this.mappings[ "/dependencies" ] = this.mappings[ "/sentry" ] & "/modules";
 
 
 	/**
