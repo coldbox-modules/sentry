@@ -17,3 +17,12 @@ it('sanitizes standalone UI/resource spans and composes supplied-client filters 
  const resource = sanitizeSpan({ op: 'resource.script', description: 'https://user:PRIVATE@host.test/private?token=PRIVATE', data: {} } as never);
  expect(resource.description).toBe('https://host.test');
 });
+
+it('retains numeric standalone Web Vitals while excluding element and URL attributes', () => {
+ const result = sanitizeSpan({ op: 'ui.webvital.lcp', description: '#PRIVATE', data: { 'browser.web_vital.lcp.value': 68, 'browser.web_vital.lcp.render_time': 60, 'browser.web_vital.lcp.element': '#PRIVATE', 'browser.web_vital.lcp.url': 'https://host/private?token=PRIVATE', 'sentry.op': 'ui.webvital.lcp', 'sentry.pageload.span_id': '0123456789abcdef', 'user_agent.original': navigator.userAgent }, measurements: { lcp: { value: 68, unit: 'millisecond' } } } as never);
+ expect(JSON.stringify(result)).not.toContain('PRIVATE');
+ expect(result.data['browser.web_vital.lcp.value']).toBe(68);
+ expect(result.data['sentry.op']).toBe('ui.webvital.lcp');
+ expect(result.measurements?.lcp.value).toBe(68);
+ expect(result.data['user_agent.original']).toBe(navigator.userAgent);
+});
