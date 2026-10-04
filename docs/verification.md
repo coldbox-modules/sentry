@@ -26,7 +26,7 @@ The full CommuniArts Vitest sweep also exposed existing pageMetadata registry an
 
 Native Lucee 6.2.8.20 PostgreSQL verification passed success, caught failure, composed SQL transformation, cached result metadata, and manual/native de-duplication (six spans). Without a caller-supplied result option, Lucee supplies only executionTime, so cache status is unknown rather than incorrectly reported as a database round trip. This Lucee runtime bypassed global listeners for query-of-queries; use the manual wrapper for that coverage.
 
-Final focused results: module telemetry and cbq hook specs 20/20; existing module API/wiring 27/27; browser companion 27/27; CommuniArts backend integration and unit specs 25/25; CommuniArts focused feedback/tracing Vitest 69/69. The complete CommuniArts Vitest run passed 803 and failed the two pre-existing contracts noted above. The application build passed its initial JavaScript gzip budget at 518.2 KiB.
+Final focused results: module telemetry and cbq hook specs 20/20; existing module API/wiring 27/27; browser companion 27/27; CommuniArts backend integration and unit specs 26/26; CommuniArts focused feedback/tracing Vitest 70/70. The complete CommuniArts Vitest run passed 803 and failed the two pre-existing contracts noted above. The application build passed its initial JavaScript gzip budget at 518.3 KiB.
 
 Queue regression checks also verify worker-start timestamps, wait time excluding processing, retry counts, cancellation after worker exit, and persisted chain propagation after callback scope cleanup. The package build produced a source ZIP including browser source/package metadata and bundled assets, excluding node_modules and installed modules. Cleanup was verified against an external symlink sentinel.
 
