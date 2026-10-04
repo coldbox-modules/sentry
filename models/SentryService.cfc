@@ -193,6 +193,10 @@ component accessors=true singleton threadSafe {
 		setExtraInfoUDFs( settings.extraInfoUDFs );
 
 		settings.appRoot = normalizeSlashes( settings.appRoot );
+		if ( !isNull( variables.observability ) ) {
+			variables.observability.shutdown();
+		}
+		variables.observability = new telemetry.Observability( this, variables.settings );
 
 		// in a non ColdBox context, ensure functionLineNums exists
 		// so this service can still be used if functionLineNums
@@ -204,6 +208,90 @@ component accessors=true singleton threadSafe {
 				}
 			} );
 		}
+	}
+
+
+	function percentageEligible(){
+		return variables.observability.percentageEligible( argumentCollection = arguments );
+	}
+	function createLuceeQueryListener( any listener, string databaseSystem = "other" ){
+		return new telemetry.LuceeQueryListener(
+			variables.observability,
+			arguments.listener ?: {},
+			arguments.databaseSystem
+		);
+	}
+	function endRequest(){
+		return variables.observability.endRequest( argumentCollection = arguments );
+	}
+	function getObservability(){
+		return variables.observability;
+	}
+	function startTransaction(){
+		return variables.observability.startTransaction( argumentCollection = arguments );
+	}
+	function startSpan(){
+		return variables.observability.startSpan( argumentCollection = arguments );
+	}
+	function withSpan(){
+		return variables.observability.withSpan( argumentCollection = arguments );
+	}
+	function getTraceHeaders(){
+		return variables.observability.getTraceHeaders( argumentCollection = arguments );
+	}
+	function withTraceContext(){
+		return variables.observability.withTraceContext( argumentCollection = arguments );
+	}
+	function getTraceContext(){
+		return variables.observability.getTraceContext( argumentCollection = arguments );
+	}
+	function withQuerySpan(){
+		return variables.observability.withQuerySpan( argumentCollection = arguments );
+	}
+	function withHttpSpan(){
+		return variables.observability.withHttpSpan( argumentCollection = arguments );
+	}
+	function captureFeedback(){
+		return variables.observability.captureFeedback( argumentCollection = arguments );
+	}
+	function captureLog(){
+		return variables.observability.captureLog( argumentCollection = arguments );
+	}
+	function counter(){
+		return variables.observability.counter( argumentCollection = arguments );
+	}
+	function gauge(){
+		return variables.observability.gauge( argumentCollection = arguments );
+	}
+	function distribution(){
+		return variables.observability.distribution( argumentCollection = arguments );
+	}
+	function captureCheckIn(){
+		return variables.observability.captureCheckIn( argumentCollection = arguments );
+	}
+	function withMonitor(){
+		return variables.observability.withMonitor( argumentCollection = arguments );
+	}
+	function getBrowserConfig(){
+		return variables.observability.getBrowserConfig( argumentCollection = arguments );
+	}
+	function flush(){
+		return variables.observability.flush( argumentCollection = arguments );
+	}
+	function shutdown(){
+		return variables.observability.shutdown( argumentCollection = arguments );
+	}
+	function captureQueueMetrics(){
+		return variables.observability.captureQueueMetrics( argumentCollection = arguments );
+	}
+	function captureRuntimeGauges(){
+		return variables.observability.captureRuntimeGauges( argumentCollection = arguments );
+	}
+	function getInstrumentedCache( string name = "default" ){
+		return new telemetry.InstrumentedCache(
+			variables.wirebox.getInstance( "cachebox:" & arguments.name ),
+			variables.observability
+		);
 	}
 
 	/**
@@ -1111,6 +1199,13 @@ component accessors=true singleton threadSafe {
 			getInterceptorService().announce( "onSentryEventCapture", { "event" : arguments.captureStruct } );
 		}
 
+		var traceContext = variables.observability.getTraceContext();
+		if ( !traceContext.isEmpty() ) {
+			if ( !arguments.captureStruct.keyExists( "contexts" ) ) {
+				arguments.captureStruct.contexts = {};
+			}
+			arguments.captureStruct.contexts.trace = traceContext;
+		}
 		// serialize data
 		jsonCapture = serializeJSON( arguments.captureStruct );
 
@@ -1125,7 +1220,7 @@ component accessors=true singleton threadSafe {
 		}
 
 		// post message
-		if ( arguments.useThread ) {
+		if ( arguments.useThread && getSentryEventEndpoint() != "envelope" ) {
 			cfthread(
 				action      = "run",
 				name        = "sentry-thread-" & createUUID(),
@@ -1169,6 +1264,16 @@ component accessors=true singleton threadSafe {
 		required string json,
 		string traceParent = ""
 	){
+		if ( getSentryEventEndpoint() == "envelope" ) {
+			variables.observability.sendSignal(
+				"event",
+				deserializeJSON( arguments.json ),
+				"error",
+				[],
+				!getAsync()
+			);
+			return;
+		}
 		var http     = {};
 		// send to sentry via REST API Call
 		var httpBody = arguments.json;
@@ -1241,7 +1346,7 @@ component accessors=true singleton threadSafe {
 		var time     = now();
 		var timeVars = {
 			"unix" : toString( int( time.getTime() / 1000 ) ),
-			"iso"  : dateTimeFormat( time, "yyyy-mm-dd'T'HH:nn:ss'Z'", "UTC" )
+			"iso"  : createObject( "java", "java.time.Instant" ).now().toString()
 		};
 		return timeVars;
 	}
