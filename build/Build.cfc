@@ -12,17 +12,19 @@ component {
 		variables.cwd          = getCWD().reReplace( "\.$", "" );
 		variables.artifactsDir = cwd & "/.artifacts";
 		variables.buildDir     = cwd & "/.tmp";
-		variables.apidDocsDir = variables.buildDir & "/apidocs";
+		variables.apidDocsDir  = variables.buildDir & "/apidocs";
 		variables.apiDocsURL   = "http://localhost:60299/apidocs/";
 		variables.testRunner   = "http://localhost:60299/tests/runner.cfm";
 
 		// Source Excludes Not Added to final binary
 		variables.excludes = [
 			"build",
-			"node-modules",
+			"node[_-]modules",
+			"(^|/)modules(/|$)",
+			"browser/tests",
 			"resources",
 			"test-harness",
-			"(package|package-lock).json",
+			"^/?(package|package-lock).json$",
 			"webpack.config.js",
 			"server-.*\.json",
 			"docker-compose.yml",
@@ -43,10 +45,7 @@ component {
 		} );
 
 		// Create Mappings
-		fileSystemUtil.createMapping(
-			"coldbox",
-			variables.cwd & "test-harness/coldbox"
-		);
+		fileSystemUtil.createMapping( "coldbox", variables.cwd & "test-harness/coldbox" );
 
 		return this;
 	}
@@ -55,9 +54,9 @@ component {
 	 * Run the build process: test, build source, docs, checksums
 	 *
 	 * @projectName The project name used for resources and slugs
-	 * @version The version you are building
-	 * @buldID The build identifier
-	 * @branch The branch you are building
+	 * @version     The version you are building
+	 * @buldID      The build identifier
+	 * @branch      The branch you are building
 	 */
 	function run(
 		required projectName,
@@ -67,6 +66,12 @@ component {
 	){
 		// Create project mapping
 		fileSystemUtil.createMapping( arguments.projectName, variables.cwd );
+
+		// Browser bundles are shipped so consuming CFML/BoxLang applications need no Node build.
+		command( "!npm --prefix browser run build" ).run();
+		if ( shell.getExitCode() ) {
+			return error( "Browser build failed" );
+		}
 
 		// Build the source
 		buildSource( argumentCollection = arguments );
@@ -94,10 +99,10 @@ component {
 
 		command( "testbox run" )
 			.params(
-				runner     = variables.testRunner,
-				verbose    = true,
-				outputFile = "#variables.cwd#/test-harness/results/test-results",
-				outputFormats="json,antjunit"
+				runner        = variables.testRunner,
+				verbose       = true,
+				outputFile    = "#variables.cwd#/test-harness/results/test-results",
+				outputFormats = "json,antjunit"
 			)
 			.run();
 
@@ -111,9 +116,9 @@ component {
 	 * Build the source
 	 *
 	 * @projectName The project name used for resources and slugs
-	 * @version The version you are building
-	 * @buldID The build identifier
-	 * @branch The branch you are building
+	 * @version     The version you are building
+	 * @buldID      The build identifier
+	 * @branch      The branch you are building
 	 */
 	function buildSource(
 		required projectName,
@@ -133,18 +138,11 @@ component {
 
 		// Project Build Dir
 		variables.projectBuildDir = variables.buildDir & "/#projectName#";
-		directoryCreate(
-			variables.projectBuildDir,
-			true,
-			true
-		);
+		directoryCreate( variables.projectBuildDir, true, true );
 
 		// Copy source
 		print.blueLine( "Copying source to build folder..." ).toConsole();
-		copy(
-			variables.cwd,
-			variables.projectBuildDir
-		);
+		copy( variables.cwd, variables.projectBuildDir );
 
 		// Create build ID
 		fileWrite(
@@ -183,10 +181,7 @@ component {
 		);
 
 		// Copy box.json for convenience
-		fileCopy(
-			"#variables.projectBuildDir#/box.json",
-			variables.exportsDir
-		);
+		fileCopy( "#variables.projectBuildDir#/box.json", variables.exportsDir );
 	}
 
 	/**
@@ -263,7 +258,12 @@ component {
 			function( path ){
 				var isExcluded = false;
 				variables.excludes.each( function( item ){
-					if ( path.replaceNoCase( variables.cwd, "", "all" ).reFindNoCase( item ) ) {
+					if (
+						path
+							.replaceNoCase( variables.cwd, "", "all" )
+							.reReplace( "^/+", "" )
+							.reFindNoCase( item )
+					) {
 						isExcluded = true;
 					}
 				} );
@@ -276,11 +276,9 @@ component {
 				fileCopy( item, target );
 			} else {
 				print.greenLine( "Copying directory #item#" ).toConsole();
-				directoryCopy(
-					item,
-					target & "/" & item.replace( src, "" ),
-					true
-				);
+				var childTarget = target & "/" & listLast( item, "/\" );
+				directoryCreate( childTarget, true, true );
+				copy( item, childTarget, true );
 			}
 		} );
 	}
@@ -295,15 +293,13 @@ component {
 	/**
 	 * Ensure the export directory exists at artifacts/NAME/VERSION/
 	 */
-	private function ensureExportDir(
-		required projectName,
-		version   = "1.0.0"
-	){
-		if ( structKeyExists( variables, "exportsDir" ) && directoryExists( variables.exportsDir ) ){
+	private function ensureExportDir( required projectName, version = "1.0.0" ){
+		if ( structKeyExists( variables, "exportsDir" ) && directoryExists( variables.exportsDir ) ) {
 			return;
 		}
 		// Prepare exports directory
 		variables.exportsDir = variables.artifactsDir & "/#projectName#/#arguments.version#";
 		directoryCreate( variables.exportsDir, true, true );
 	}
+
 }
