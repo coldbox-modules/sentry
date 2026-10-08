@@ -237,3 +237,7 @@ Holy Ghost which is given unto us. ." Romans 5:5
 ### THE DAILY BREAD
 
  > "I am the way, and the truth, and the life; no one comes to the Father, but by me (JESUS)" Jn 14:1-12
+
+## Observability and portable feedback
+
+See [configuration and APIs](docs/observability.md) and the [verification record](docs/verification.md) for tracing, runtime query adapters, cbq attempts, caches, outbound requests, structured logs, metrics, check-ins, Web Vitals, and CFML/BoxLang browser feedback installation. New integrations are opt-in.

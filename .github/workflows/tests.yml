@@ -8,6 +8,29 @@ on:
         required: false
 
 jobs:
+  browser:
+    name: Browser assets
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: browser/package-lock.json
+
+      - name: Install browser dependencies
+        run: npm --prefix browser ci
+
+      - name: Test browser assets
+        run: npm --prefix browser test
+
+      - name: Build browser assets
+        run: npm --prefix browser run build
+
   tests:
     name: Tests
     runs-on: ubuntu-24.04
@@ -84,10 +107,22 @@ jobs:
           box package set dependencies.coldbox=${{ matrix.coldboxVersion }}
           box install
 
+      - name: Setup Node for the envelope receiver
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Start local envelope receiver
+        run: |
+          mkdir -p test-harness/tests/results
+          node test-harness/support/receiver.mjs > test-harness/tests/results/receiver.log 2>&1 &
+          echo $! > test-harness/tests/results/receiver.pid
+          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:60320/state
+
       - name: Start ${{ matrix.cfengine }} Server
         run: |
           box server start serverConfigFile="server-${{ matrix.cfengine }}.json" --noSaveSettings --debug
-          curl http://127.0.0.1:60299
+          curl --fail-with-body http://127.0.0.1:60299/health.cfm
 
       - name: Run Tests
         run: |
@@ -100,6 +135,16 @@ jobs:
         with:
           junit_files: test-harness/tests/results/**/*.xml
           check_name: "${{ matrix.cfengine }} ColdBox ${{ matrix.coldboxVersion }} Test Results"
+
+      - name: Stop local envelope receiver
+        if: always()
+        run: |
+          if [ -f test-harness/tests/results/receiver.pid ]; then
+            receiver_pid="$(cat test-harness/tests/results/receiver.pid)"
+            if kill -0 "$receiver_pid" 2>/dev/null; then
+              kill "$receiver_pid"
+            fi
+          fi
 
       - name: Upload Test Results to Artifacts
         if: always()

@@ -1,0 +1,1 @@
+(()=>{var t=new URL("./esm/index.js",document.currentScript.src).href,n,i=()=>n??=import(t);Object.assign(window,{SentryBox:{ready:i,initializeBrowser:async(...e)=>(await i()).initializeBrowser(...e),mountFeedbackWidget:async(...e)=>(await i()).mountFeedbackWidget(...e)}});})();

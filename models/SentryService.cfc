@@ -5,7 +5,8 @@
  * ---
  * Connector to Sentry
  */
-component accessors=true singleton {
+// Complete dependency injection and onDIComplete before publishing this singleton.
+component accessors=true singleton threadSafe {
 
 	// DI
 	property name="wirebox"            inject="wirebox";
@@ -192,6 +193,10 @@ component accessors=true singleton {
 		setExtraInfoUDFs( settings.extraInfoUDFs );
 
 		settings.appRoot = normalizeSlashes( settings.appRoot );
+		if ( !isNull( variables.observability ) ) {
+			variables.observability.shutdown();
+		}
+		variables.observability = new telemetry.Observability( this, variables.settings );
 
 		// in a non ColdBox context, ensure functionLineNums exists
 		// so this service can still be used if functionLineNums
@@ -203,6 +208,90 @@ component accessors=true singleton {
 				}
 			} );
 		}
+	}
+
+
+	function percentageEligible(){
+		return variables.observability.percentageEligible( argumentCollection = arguments );
+	}
+	function createLuceeQueryListener( any listener, string databaseSystem = "other" ){
+		return new telemetry.LuceeQueryListener(
+			variables.observability,
+			arguments.listener ?: {},
+			arguments.databaseSystem
+		);
+	}
+	function endRequest(){
+		return variables.observability.endRequest( argumentCollection = arguments );
+	}
+	function getObservability(){
+		return variables.observability;
+	}
+	function startTransaction(){
+		return variables.observability.startTransaction( argumentCollection = arguments );
+	}
+	function startSpan(){
+		return variables.observability.startSpan( argumentCollection = arguments );
+	}
+	function withSpan(){
+		return variables.observability.withSpan( argumentCollection = arguments );
+	}
+	function getTraceHeaders(){
+		return variables.observability.getTraceHeaders( argumentCollection = arguments );
+	}
+	function withTraceContext(){
+		return variables.observability.withTraceContext( argumentCollection = arguments );
+	}
+	function getTraceContext(){
+		return variables.observability.getTraceContext( argumentCollection = arguments );
+	}
+	function withQuerySpan(){
+		return variables.observability.withQuerySpan( argumentCollection = arguments );
+	}
+	function withHttpSpan(){
+		return variables.observability.withHttpSpan( argumentCollection = arguments );
+	}
+	function captureFeedback(){
+		return variables.observability.captureFeedback( argumentCollection = arguments );
+	}
+	function captureLog(){
+		return variables.observability.captureLog( argumentCollection = arguments );
+	}
+	function counter(){
+		return variables.observability.counter( argumentCollection = arguments );
+	}
+	function gauge(){
+		return variables.observability.gauge( argumentCollection = arguments );
+	}
+	function distribution(){
+		return variables.observability.distribution( argumentCollection = arguments );
+	}
+	function captureCheckIn(){
+		return variables.observability.captureCheckIn( argumentCollection = arguments );
+	}
+	function withMonitor(){
+		return variables.observability.withMonitor( argumentCollection = arguments );
+	}
+	function getBrowserConfig(){
+		return variables.observability.getBrowserConfig( argumentCollection = arguments );
+	}
+	function flush(){
+		return variables.observability.flush( argumentCollection = arguments );
+	}
+	function shutdown(){
+		return variables.observability.shutdown( argumentCollection = arguments );
+	}
+	function captureQueueMetrics(){
+		return variables.observability.captureQueueMetrics( argumentCollection = arguments );
+	}
+	function captureRuntimeGauges(){
+		return variables.observability.captureRuntimeGauges( argumentCollection = arguments );
+	}
+	function getInstrumentedCache( string name = "default" ){
+		return new telemetry.InstrumentedCache(
+			variables.wirebox.getInstance( "cachebox:" & arguments.name ),
+			variables.observability
+		);
 	}
 
 	/**
@@ -538,7 +627,7 @@ component accessors=true singleton {
 			};
 
 			// The name of the function being called
-			var functionName = functionLineNums.findTagContextFunction( thisTCItem );
+			var functionName = sourceCtx.available ? functionLineNums.findTagContextFunction( thisTCItem ) : "";
 			if ( len( functionName ) ) {
 				thisStackItem[ "function" ] = functionName;
 			}
@@ -788,10 +877,13 @@ component accessors=true singleton {
 		var result = {
 			"pre_context"  : [],
 			"context_line" : "",
-			"post_context" : []
+			"post_context" : [],
+			"available"    : false
 		};
 
-		if ( !fileExists( arguments.templatePath ) ) {
+		// Treat trace paths as local files, never as CF virtual-filesystem schemes.
+		var sourceFile = createObject( "java", "java.io.File" ).init( arguments.templatePath );
+		if ( !sourceFile.isFile() ) {
 			return result;
 		}
 
@@ -801,6 +893,7 @@ component accessors=true singleton {
 			arrayAppend( fileArray, fileReadLine( f ) );
 		}
 		fileClose( f );
+		result.available = true;
 
 		var fileLen = arrayLen( fileArray );
 
@@ -1070,7 +1163,11 @@ component accessors=true singleton {
 		arguments.path = trim( arguments.path );
 		if ( !len( arguments.path ) && structCount( arguments.cgiVars ) ) {
 			// leave off script name for SES URLs since rewrites were probably used
-			if ( arguments.cgiVars.script_name == "/index.cfm" && len( arguments.cgiVars.path_info ) ) {
+			if (
+				listFindNoCase( "/index.cfm,/index.bxm", arguments.cgiVars.script_name ) && len(
+					arguments.cgiVars.path_info
+				)
+			) {
 				arguments.path = "http" & ( arguments.cgiVars.server_port_secure ? "s" : "" ) & "://" & arguments.cgiVars.server_name & arguments.cgiVars.path_info;
 			} else {
 				arguments.path = "http" & ( arguments.cgiVars.server_port_secure ? "s" : "" ) & "://" & arguments.cgiVars.server_name & arguments.cgiVars.script_name & arguments.cgiVars.path_info;
@@ -1110,6 +1207,13 @@ component accessors=true singleton {
 			getInterceptorService().announce( "onSentryEventCapture", { "event" : arguments.captureStruct } );
 		}
 
+		var traceContext = variables.observability.getTraceContext();
+		if ( !traceContext.isEmpty() ) {
+			if ( !arguments.captureStruct.keyExists( "contexts" ) ) {
+				arguments.captureStruct.contexts = {};
+			}
+			arguments.captureStruct.contexts.trace = traceContext;
+		}
 		// serialize data
 		jsonCapture = serializeJSON( arguments.captureStruct );
 
@@ -1124,7 +1228,7 @@ component accessors=true singleton {
 		}
 
 		// post message
-		if ( arguments.useThread ) {
+		if ( arguments.useThread && getSentryEventEndpoint() != "envelope" ) {
 			cfthread(
 				action      = "run",
 				name        = "sentry-thread-" & createUUID(),
@@ -1168,6 +1272,16 @@ component accessors=true singleton {
 		required string json,
 		string traceParent = ""
 	){
+		if ( getSentryEventEndpoint() == "envelope" ) {
+			variables.observability.sendSignal(
+				"event",
+				deserializeJSON( arguments.json ),
+				"error",
+				[],
+				!getAsync()
+			);
+			return;
+		}
 		var http     = {};
 		// send to sentry via REST API Call
 		var httpBody = arguments.json;
@@ -1234,13 +1348,15 @@ component accessors=true singleton {
 	}
 
 	/**
-	 * Get UTC time values
+	 * Get matching UTC values from one truncated epoch second on every engine.
 	 */
-	private struct function getTimeVars(){
-		var time     = now();
-		var timeVars = {
-			"unix" : toString( int( time.getTime() / 1000 ) ),
-			"iso"  : dateTimeFormat( time, "yyyy-mm-dd'T'HH:nn:ss'Z'", "UTC" )
+	private struct function getTimeVars( date time = now() ){
+		var unixSeconds = int( time.getTime() / 1000 );
+		var timeVars    = {
+			"unix" : toString( unixSeconds ),
+			"iso"  : createObject( "java", "java.time.Instant" )
+				.ofEpochSecond( javacast( "long", unixSeconds ) )
+				.toString()
 		};
 		return timeVars;
 	}
