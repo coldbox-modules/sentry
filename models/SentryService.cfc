@@ -1344,12 +1344,15 @@ component accessors=true singleton threadSafe {
 	}
 
 	/**
-	 * Get UTC time values using the ISO mask shared by CFML and native BoxLang.
+	 * Get matching UTC values from one truncated epoch second on every engine.
 	 */
 	private struct function getTimeVars( date time = now() ){
-		var timeVars = {
-			"unix" : toString( int( time.getTime() / 1000 ) ),
-			"iso"  : dateTimeFormat( time, "iso", "UTC" )
+		var unixSeconds = int( time.getTime() / 1000 );
+		var timeVars    = {
+			"unix" : toString( unixSeconds ),
+			"iso"  : createObject( "java", "java.time.Instant" )
+				.ofEpochSecond( javacast( "long", unixSeconds ) )
+				.toString()
 		};
 		return timeVars;
 	}
