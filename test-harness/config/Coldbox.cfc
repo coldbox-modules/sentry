@@ -11,7 +11,7 @@
 			//Development Settings
 			reinitPassword			= "",
 			handlersIndexAutoReload = true,
-			modulesExternalLocation = [],
+			modulesExternalLocation = [ "/dependencies" ],
 
 			//Implicit Events
 			defaultEvent			= "",
@@ -43,7 +43,7 @@
 		// Module Directives
 		modules = {
 			// An array of modules names to load, empty means all of them
-			include = [],
+			include = [ "funclinenums" ],
 			// An array of modules names to NOT load, empty means none
 			exclude = []
 		};

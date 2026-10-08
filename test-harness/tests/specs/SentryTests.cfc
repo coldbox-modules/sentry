@@ -546,6 +546,10 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				// Should be normalized to forward slashes
 				expect( frames[ 1 ].filename ).toInclude( "C:/wwwroot/app/index.cfm" );
 				expect( frames[ 1 ].lineno ).toBe( 42 );
+				expect( frames[ 1 ].context_line ).toBeEmpty();
+				expect( frames[ 1 ].pre_context ).toBeEmpty();
+				expect( frames[ 1 ].post_context ).toBeEmpty();
+				expect( frames[ 1 ] ).notToHaveKey( "function" );
 			} );
 
 			it( "deduplicates repeated template+line combinations in tagContext", function(){
@@ -573,7 +577,7 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 				expect( frames.len() ).toBe( 2 );
 			} );
 
-			it( "finds function names via functionLineNums for synthetic tagContext frames", function(){
+			it( "finds function names and source context for readable template frames", function(){
 				var service = prepareMock( getSentry() );
 				service.setEnabled( true );
 				service.$( "post" );
@@ -590,8 +594,8 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 					"type"       : "application",
 					"TagContext" : [],
 					"StackTrace" : "java.lang.NullPointerException
-	at com_example_handler_cfc$cf.call(/app/handler.cfc:42)
-	at com_example_interceptor_cfc$cf.call(/app/interceptor.cfc:15)"
+	at com_example_handler_cfc$cf.call(#getCurrentTemplatePath()#:1)
+	at com_example_interceptor_cfc$cf.call(#getCurrentTemplatePath()#:6)"
 				};
 
 				service.captureException( exception = testException, showJavaStackTrace = true );
@@ -601,6 +605,10 @@ component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 
 				// functionLineNums.findTagContextFunction() is called during frame building
 				expect( mockFLN.$count( "findTagContextFunction" ) ).toBe( 2 );
+				expect( frames[ 1 ].function ).toBe( "MyApp.handler" );
+				expect( frames[ 2 ].function ).toBe( "MyApp.interceptor" );
+				expect( frames[ 1 ].context_line ).toInclude( "loadColdbox" );
+				expect( frames[ 2 ].context_line ).toInclude( "/**" );
 			} );
 
 			it( "skips invalid line numbers in stack trace template references", function(){

@@ -14,6 +14,11 @@ component extends="testbox.system.BaseSpec" {
 						"unix"    : "1789346978"
 					},
 					{
+						"instant" : "2026-09-14T00:49:38.900Z",
+						"iso"     : "2026-09-14T00:49:38Z",
+						"unix"    : "1789346978"
+					},
+					{
 						"instant" : "2026-01-01T00:00:00Z",
 						"unix"    : "1767225600"
 					},
@@ -28,7 +33,7 @@ component extends="testbox.system.BaseSpec" {
 					);
 					var timestamps = service.getTimeVars( reference );
 
-					expect( timestamps.iso ).toBe( sample.instant );
+					expect( timestamps.iso ).toBe( sample.iso ?: sample.instant );
 					expect( timestamps.unix ).toBe( sample.unix );
 				}
 			} );

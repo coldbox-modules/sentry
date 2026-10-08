@@ -97,6 +97,15 @@ component {
 			}
 		}
 
+		settings.append(
+			createObject( "component", "#moduleMapping#.models.telemetry.Observability" ).defaults(),
+			false
+		);
+		interceptors = [
+			{ class : "#moduleMapping#.interceptors.QueueObservability" },
+			{ class : "#moduleMapping#.interceptors.Observability" },
+			{ class : "#moduleMapping#.interceptors.QueryObservability" }
+		];
 		interceptorSettings = { customInterceptionPoints : [ "onSentryEventCapture" ] };
 	}
 
@@ -105,8 +114,29 @@ component {
 	 */
 	function onLoad(){
 		// Incorporate defaults into settings
+		if ( settings.queryAdapter == "auto" || settings.queryAdapter == "boxlang" ) {
+			wirebox
+				.getInstance( "SentryService@sentry" )
+				.getObservability()
+				.configureQueryInstrumentation( getApplicationMetadata().name );
+		}
+		binder.mapDSL( "sentryCache", "#moduleMapping#.models.dsl.CacheDSL" );
+		wirebox.registerDSL( "sentryCache", "#moduleMapping#.models.dsl.CacheDSL" );
 		settings.scrubFields.addAll( SCRUB_FIELDS );
 		settings.scrubHeaders.addAll( SCRUB_HEADERS );
+
+		if ( settings.enableStructuredLogBoxAppender && settings.enableLogs ) {
+			logBox.registerAppender(
+				name       = "sentry_structured",
+				class      = "#moduleMapping#.models.StructuredLogAppender",
+				properties = { "messageMode" : settings.logMessageMode },
+				levelMin   = 0,
+				levelMax   = 3
+			);
+			logBox
+				.getRootLogger()
+				.addAppender( logBox.getAppendersMap( "sentry_structured" )[ "sentry_structured" ] );
+		}
 
 		// Load the LogBox Appenders
 		if ( settings.enableLogBoxAppender ) {
@@ -118,6 +148,9 @@ component {
 	 * Fired when the module is unregistered and unloaded
 	 */
 	function onUnload(){
+		if ( wirebox.containsInstance( "SentryService@sentry" ) ) {
+			wirebox.getInstance( "SentryService@sentry" ).shutdown();
+		}
 	}
 
 	/**
