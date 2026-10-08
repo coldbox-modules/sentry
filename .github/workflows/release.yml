@@ -56,6 +56,16 @@ jobs:
           changelogPath: ./changelog.md
           tag: v${{ env.VERSION }}
 
+      - name: Setup Node for browser assets
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: browser/package-lock.json
+
+      - name: Install browser build dependencies
+        run: npm --prefix browser ci
+
       - name: Build ${{ env.MODULE_ID }}
         run: |
           npm install -g markdownlint-cli
