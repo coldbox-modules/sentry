@@ -33,8 +33,12 @@ component extends="testbox.system.BaseSpec" {
 				} );
 				var service = new sentry.models.SentryService( { DSN : "http://public@127.0.0.1:60320/1", async : false } );
 				try {
-					expect( service.captureFeedback( message = "Synthetic", wait = true ).getStatus() ).toBe( "rejected" );
-					expect( service.captureFeedback( message = "Retry", wait = true ).getStatus() ).toBe( "dropped" );
+					expect( service.captureFeedback( message = "Synthetic", wait = true ).getStatus() ).toBe(
+						"rejected"
+					);
+					expect( service.captureFeedback( message = "Retry", wait = true ).getStatus() ).toBe(
+						"dropped"
+					);
 					expect(
 						service
 							.getObservability()

@@ -24,7 +24,9 @@ component extends="coldbox.system.logging.AbstractAppender" {
 			if ( !accepted || reFindNoCase( "sentry|qb|coldbox|bindings", category ) ) {
 				return;
 			}
-			var service = propertyExists( "sentryService" ) ? getProperty( "sentryService" ) : application.wirebox.getInstance( "SentryService@sentry" );
+			var service = propertyExists( "sentryService" ) ? getProperty( "sentryService" ) : application.wirebox.getInstance(
+				"SentryService@sentry"
+			);
 			service.captureLog(
 				getProperty( "messageMode", "sanitized" ) == "category" ? "Application diagnostic" : arguments.logEvent.getMessage(),
 				lCase( this.logLevels.lookup( arguments.logEvent.getSeverity() ) ),

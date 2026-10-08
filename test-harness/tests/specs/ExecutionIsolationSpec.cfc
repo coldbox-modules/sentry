@@ -121,7 +121,9 @@ component extends="testbox.system.BaseSpec" {
 				expect( chain[ 1 ].properties[ "__sentry" ].headers[ "sentry-trace" ] ).toBe( initial );
 				observer.onCBQJobPublished( {}, { job : job } );
 				expect( root.getChildren().len() ).toBe( 1 );
-				expect( root.getChildren()[ 1 ].toPayload().data[ "messaging.message.id" ] ).toBe( "synthetic-first" );
+				expect( root.getChildren()[ 1 ].toPayload().data[ "messaging.message.id" ] ).toBe(
+					"synthetic-first"
+				);
 				variables.telemetry.clearScope();
 				var continuation = chain[ 1 ].properties;
 				var nextJob      = {

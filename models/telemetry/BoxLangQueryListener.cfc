@@ -15,7 +15,9 @@ component {
 	private function owns( required struct data ){
 		try {
 			var applicationContext = arguments.data.context.getParentOfType(
-				createObject( "java", "java.lang.Class" ).forName( "ortus.boxlang.runtime.context.ApplicationBoxContext" )
+				createObject( "java", "java.lang.Class" ).forName(
+					"ortus.boxlang.runtime.context.ApplicationBoxContext"
+				)
 			);
 			return !isNull( applicationContext ) && applicationContext
 				.getApplication()
