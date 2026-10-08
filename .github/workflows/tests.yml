@@ -8,6 +8,29 @@ on:
         required: false
 
 jobs:
+  browser:
+    name: Browser assets
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: browser/package-lock.json
+
+      - name: Install browser dependencies
+        run: npm --prefix browser ci
+
+      - name: Test browser assets
+        run: npm --prefix browser test
+
+      - name: Build browser assets
+        run: npm --prefix browser run build
+
   tests:
     name: Tests
     runs-on: ubuntu-24.04
