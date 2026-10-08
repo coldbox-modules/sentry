@@ -1163,7 +1163,11 @@ component accessors=true singleton threadSafe {
 		arguments.path = trim( arguments.path );
 		if ( !len( arguments.path ) && structCount( arguments.cgiVars ) ) {
 			// leave off script name for SES URLs since rewrites were probably used
-			if ( arguments.cgiVars.script_name == "/index.cfm" && len( arguments.cgiVars.path_info ) ) {
+			if (
+				listFindNoCase( "/index.cfm,/index.bxm", arguments.cgiVars.script_name ) && len(
+					arguments.cgiVars.path_info
+				)
+			) {
 				arguments.path = "http" & ( arguments.cgiVars.server_port_secure ? "s" : "" ) & "://" & arguments.cgiVars.server_name & arguments.cgiVars.path_info;
 			} else {
 				arguments.path = "http" & ( arguments.cgiVars.server_port_secure ? "s" : "" ) & "://" & arguments.cgiVars.server_name & arguments.cgiVars.script_name & arguments.cgiVars.path_info;
