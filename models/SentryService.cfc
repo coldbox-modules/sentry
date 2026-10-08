@@ -1234,13 +1234,12 @@ component accessors=true singleton {
 	}
 
 	/**
-	 * Get UTC time values
+	 * Get UTC time values using the ISO mask shared by CFML and native BoxLang.
 	 */
-	private struct function getTimeVars(){
-		var time     = now();
+	private struct function getTimeVars( date time = now() ){
 		var timeVars = {
 			"unix" : toString( int( time.getTime() / 1000 ) ),
-			"iso"  : dateTimeFormat( time, "yyyy-mm-dd'T'HH:nn:ss'Z'", "UTC" )
+			"iso"  : dateTimeFormat( time, "iso", "UTC" )
 		};
 		return timeVars;
 	}
