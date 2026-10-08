@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-08
+
 ### Added
 
 - Opt-in request, worker, query, cache, and HTTP tracing with isolated trace propagation.
@@ -72,7 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Create first module version
 
-[Unreleased]: https://github.com/coldbox-modules/sentry/compare/v2.1.6...HEAD
+[Unreleased]: https://github.com/coldbox-modules/sentry/compare/v2.2.0...HEAD
+
+[2.2.0]: https://github.com/coldbox-modules/sentry/compare/v2.1.6...v2.2.0
 
 [2.1.6]: https://github.com/coldbox-modules/sentry/compare/v2.1.5...v2.1.6
 
