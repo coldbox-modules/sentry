@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in request, worker, query, cache, and HTTP tracing with isolated trace propagation.
+- Structured logs, trace metrics, check-ins, and bounded envelope delivery.
+- Bundled browser tracing, Web Vitals, feedback, screenshots, and replay with privacy controls.
+
+### Fixed
+
+- Complete Sentry singleton initialization before concurrent exception capture.
+- Generate matching UTC ISO and epoch timestamps on CFML and native BoxLang.
+- Normalize rewritten `index.bxm` request URLs consistently with `index.cfm`.
+- Handle missing source paths and observability cleanup across supported engines.
+- Install browser build dependencies and repair platform-specific lockfile metadata.
+
+### Changed
+
+- Verify browser installation, tests, and bundles in PR and snapshot CI.
+- Run CI for stable-release PRs and prepare the next development patch from the released version.
+
 ## [2.1.6] - 2026-07-14
 
 ## [2.1.5] - 2024-12-25

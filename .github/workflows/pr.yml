@@ -11,6 +11,8 @@ on:
     branches:
       - "releases/v*"
       - development
+      - master
+      - main
 
 jobs:
   tests:

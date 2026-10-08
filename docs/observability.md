@@ -1,6 +1,6 @@
 # Observability and feedback for CFML and BoxLang
 
-All new integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Version 3.0.0-alpha.1 is a preview requiring the accompanying qb/cbq hooks; it is not a published stable release.
+All new integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Version 2.2.0 adds these features without requiring existing applications to enable them. Optional qb/cbq integrations require the hooks described below.
 
 ## Server setup
 
