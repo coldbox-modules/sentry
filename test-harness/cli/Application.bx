@@ -1,0 +1,5 @@
+/** A real command-line application; no servlet, session, or CGI scope. */
+class {
+    this.name = "SentryCliRegression";
+    this.sessionManagement = false;
+}

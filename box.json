@@ -1,7 +1,7 @@
 {
     "name": "Sentry",
     "author": "Ortus Solutions <info@ortussolutions.com>",
-    "version": "2.2.0",
+    "version": "2.2.1",
     "slug": "sentry",
     "type": "modules",
     "homepage": "https://github.com/coldbox-modules/sentry",
@@ -55,5 +55,6 @@
     },
     "testbox": {
         "runner": "http://localhost:60299/tests/runner.cfm"
-    }
+    },
+    "location": "forgeboxStorage"
 }

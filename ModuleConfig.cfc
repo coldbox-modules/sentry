@@ -65,7 +65,7 @@ component {
 			// posting to "#sentryUrl#/api/#projectID#/store" is deprecated, but backward compatible
 			// set to "envelope" to send events to modern "#sentryUrl#/api/#projectID#/envelope"
 			"sentryEventEndpoint"    : "store",
-			"serverName"             : cgi.server_name,
+			"serverName"             : isDefined( "cgi.server_name" ) ? cgi.server_name : "",
 			"appRoot"                : expandPath( "/" ),
 			"sentryVersion"          : 7,
 			// This is not arbitrary but must be a specific value. Leave as "cfml"

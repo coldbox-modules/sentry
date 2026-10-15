@@ -1,0 +1,8 @@
+{
+  "mappings": {
+    "/sentry": "${user-dir}",
+    "/coldbox": "${user-dir}/test-harness/coldbox",
+    "/cli": "${user-dir}/test-harness/cli",
+    "/cliModules": "${user-dir}/test-harness/modules"
+  }
+}

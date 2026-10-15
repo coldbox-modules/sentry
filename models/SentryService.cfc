@@ -114,7 +114,7 @@ component accessors=true singleton threadSafe {
 			"privateKey"          : "",
 			"projectID"           : 0,
 			"sentryUrl"           : "https://sentry.io",
-			"serverName"          : cgi.server_name,
+			"serverName"          : isDefined( "cgi.server_name" ) ? cgi.server_name : "",
 			"appRoot"             : expandPath( "/" ),
 			"sentryVersion"       : 7,
 			"sentryEventEndpoint" : "store",
@@ -182,7 +182,7 @@ component accessors=true singleton threadSafe {
 
 		setRelease( settings.release );
 		setEnvironment( settings.environment );
-		setServerName( settings.serverName );
+		setServerName( len( settings.serverName ) ? settings.serverName : getHostName() );
 		setAsync( settings.async );
 		setSentryVersion( settings.sentryVersion );
 		setSentryEventEndpoint( settings.sentryEventEndpoint );
@@ -374,7 +374,7 @@ component accessors=true singleton threadSafe {
 		string level = "info",
 		string path  = "",
 		array params,
-		any cgiVars       = cgi,
+		any cgiVars       = getCGIForRequest(),
 		boolean useThread = getAsync(),
 		struct userInfo   = {},
 		string logger     = getLogger(),
@@ -452,7 +452,7 @@ component accessors=true singleton threadSafe {
 		boolean showJavaStackTrace         = settings.showJavaStackTrace,
 		boolean removeTabsOnJavaStackTrace = false,
 		any additionalData,
-		any cgiVars       = cgi,
+		any cgiVars       = getCGIForRequest(),
 		boolean useThread = getAsync(),
 		struct userInfo   = {},
 		string message    = "",
@@ -1065,7 +1065,7 @@ component accessors=true singleton threadSafe {
 	 */
 	public void function capture(
 		required any captureStruct,
-		any cgiVars       = cgi,
+		any cgiVars       = getCGIForRequest(),
 		string path       = "",
 		boolean useThread = getAsync(),
 		struct userInfo   = {}
@@ -1099,7 +1099,11 @@ component accessors=true singleton threadSafe {
 		 *
 		 * All other keys are stored as extra information but not specifically processed by sentry.
 		 */
-		var thisUserInfo = { "ip_address" : getRealIP() };
+		var thisUserInfo = {};
+		var realIP       = getRealIP();
+		if ( len( realIP ) ) {
+			thisUserInfo.ip_address = realIP;
+		}
 
 		var userInfoUDF = getUserInfoUDF();
 		// If there is a closure to produce user info, call it
@@ -1176,29 +1180,35 @@ component accessors=true singleton threadSafe {
 
 		// Request interface
 		// https://develop.sentry.dev/sdk/event-payloads/request/
-		arguments.captureStruct[ "request" ] = {
-			"url"          : arguments.path,
-			"method"       : arguments.cgiVars.request_method ?: "GET",
-			"query_string" : sanitizeQueryString( arguments.cgiVars.query_string ?: "" ),
-			"env"          : sanitizeEnv( arguments.cgiVars ),
-			"headers"      : sanitizeHeaders( httpRequestData.headers )
-		};
+		if (
+			structCount( arguments.cgiVars ) || len( arguments.path ) || structCount( httpRequestData.headers ) || len(
+				httpRequestData.content
+			)
+		) {
+			arguments.captureStruct[ "request" ] = {
+				"url"          : arguments.path,
+				"method"       : arguments.cgiVars.request_method ?: "GET",
+				"query_string" : sanitizeQueryString( arguments.cgiVars.query_string ?: "" ),
+				"env"          : sanitizeEnv( arguments.cgiVars ),
+				"headers"      : sanitizeHeaders( httpRequestData.headers )
+			};
 
-		if ( variables.settings.sendCookies ) {
-			arguments.captureStruct[ "request" ][ "cookies" ] = sanitizeFields(
-				cookie.map( function( k, v ){
-					return toString( v ); // Sentry requires all cookies be strings
-				} )
-			);
-		}
-
-		if ( variables.settings.sendPostData ) {
-			if ( !structIsEmpty( form ) ) {
-				arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields( form );
-			} else {
-				arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields(
-					isJSON( httpRequestData.content ) ? deserializeJSON( httpRequestData.content ) : {}
+			if ( variables.settings.sendCookies && isDefined( "cookie" ) ) {
+				arguments.captureStruct[ "request" ][ "cookies" ] = sanitizeFields(
+					cookie.map( function( k, v ){
+						return toString( v ); // Sentry requires all cookies be strings
+					} )
 				);
+			}
+
+			if ( variables.settings.sendPostData ) {
+				if ( isDefined( "form" ) && !structIsEmpty( form ) ) {
+					arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields( form );
+				} else {
+					arguments.captureStruct[ "request" ][ "data" ] = sanitizeFields(
+						isJSON( httpRequestData.content ) ? deserializeJSON( httpRequestData.content ) : {}
+					);
+				}
 			}
 		}
 
@@ -1368,7 +1378,7 @@ component accessors=true singleton threadSafe {
 		try {
 			return createObject( "java", "java.net.InetAddress" ).getLocalHost().getHostName();
 		} catch ( Any e ) {
-			return cgi.http_host;
+			return isDefined( "cgi.http_host" ) ? cgi.http_host : "";
 		}
 	}
 
@@ -1387,6 +1397,9 @@ component accessors=true singleton threadSafe {
 			return trim( listFirst( headers[ "X-Forwarded-For" ] ) );
 		}
 
+		if ( !isDefined( "cgi.remote_addr" ) ) {
+			return "";
+		}
 		return len( cgi.remote_addr ) ? trim( listFirst( cgi.remote_addr ) ) : "127.0.0.1";
 	}
 
@@ -1489,9 +1502,12 @@ component accessors=true singleton threadSafe {
 		return normalizedPath.replace( "//", "/", "all" );
 	}
 
-	/**
-	 * I return the http request data
-	 */
+	/** Return actual request metadata, or none in a command-line process. */
+	struct function getCGIForRequest(){
+		return isDefined( "cgi" ) ? cgi : {};
+	}
+
+	/** I return HTTP data when a request exists. */
 	struct function getHTTPDataForRequest(){
 		try {
 			var result = getHTTPRequestData();

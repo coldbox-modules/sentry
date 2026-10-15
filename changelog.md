@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-10-14
+
+### Fixed
+
+- Initialize and capture events from standalone CLI and ColdBox operator processes without CGI, cookie, or form scopes.
+- Retain actual host names while omitting invented HTTP request and client IP metadata from CLI events.
+
+## [2.2.0] - 2026-10-08
+
 ### Added
 
 - Opt-in request, worker, query, cache, and HTTP tracing with isolated trace propagation.

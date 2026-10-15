@@ -1,0 +1,37 @@
+function exerciseCli(){
+if ( isDefined( "cgi" ) ) {
+    throw( message = "CLI regression must run without a CGI scope." );
+}
+var settings = {
+    DSN : getSystemSetting( "SENTRY_CLI_TEST_DSN" ),
+    async : false,
+    sentryEventEndpoint : "envelope",
+    sendCookies : true,
+    sendPostData : true
+};
+var standalone = new sentry.models.SentryService( settings );
+try {
+    standalone.captureMessage( message = "standalone CLI message", useThread = false );
+    try {
+        throw( type = "Sentry.CliRegression", message = "standalone CLI exception" );
+    } catch ( any expected ) {
+        standalone.captureException( exception = expected, useThread = false );
+    }
+    standalone.flush( 5000 );
+} finally {
+    standalone.shutdown();
+}
+var controller = new coldbox.system.web.Controller( expandPath( "/cli" ), "sentryCliRegression" );
+try {
+    controller.getLoaderService().loadApplication( "cli.config.Coldbox", "/cli", "/" );
+    var service = controller.getWireBox().getInstance( "SentryService@sentry" );
+    service.captureMessage( message = "ColdBox CLI message", useThread = false );
+    service.flush( 5000 );
+} finally {
+    controller.getLoaderService().processShutdown( force = true );
+    application.delete( "sentryCliRegression" );
+}
+println( JSONSerialize( { passed : true, cgiPresent : isDefined( "cgi" ) } ) );
+
+}
+exerciseCli();
