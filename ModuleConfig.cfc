@@ -12,7 +12,7 @@ component {
 	this.author             = "Ortus Solutions";
 	this.webURL             = "https://www.ortussolutions.com";
 	this.description        = "A module to log and send bug reports to Sentry";
-	this.version            = "2.2.1+bulk.clock.1";
+	this.version            = "2.2.1+bulk.clock.2";
 	// If true, looks for views in the parent first, if not found, then in the module. Else vice-versa
 	this.viewParentLookup   = true;
 	// If true, looks for layouts in the parent first, if not found, then in module. Else vice-versa

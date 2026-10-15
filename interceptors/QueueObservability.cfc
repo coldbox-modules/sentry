@@ -1,11 +1,13 @@
 /** Handles are keyed by immutable execution IDs, never by callback thread or mutable job state. */
 component {
 
-	property name                ="sentry" inject="SentryService@sentry";
-	variables.attempts           = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
-	variables.publishes          = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
-	variables.execution          = createObject( "java", "java.lang.ThreadLocal" ).init();
-	variables.observationFailures= createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
+	property name                 ="sentry" inject="SentryService@sentry";
+	variables.attempts            = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+	variables.publishes           = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+	variables.publishLock         = createObject( "java", "java.util.concurrent.locks.ReentrantLock" ).init();
+	variables.oldestPublishCreated= 0;
+	variables.execution           = createObject( "java", "java.lang.ThreadLocal" ).init();
+	variables.observationFailures = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
 	function onCBQJobAdded( event, interceptData ){
 		try {
 			if ( !variables.sentry.getSettings().enableQueueTracing ) {
@@ -14,16 +16,17 @@ component {
 			var job       = arguments.interceptData.job;
 			var telemetry = variables.sentry.getObservability();
 			var sweepTime = telemetry.timestamp();
-			for ( var publishId in variables.publishes.keySet().toArray() ) {
-				var published = variables.publishes.get( publishId );
-				if ( !isNull( published ) && sweepTime - published.created > 3600 ) {
-					var expired = variables.publishes.remove( publishId );
-					if ( !isNull( expired ) ) {
+			for ( var expired in expiredPublishes( sweepTime ) ) {
+				try {
+					try {
 						expired.span.finish( "deadline_exceeded" );
+					} finally {
 						if ( expired.ownsRoot ) {
 							expired.root.finish( "deadline_exceeded" );
 						}
 					}
+				} catch ( any unavailableSpan ) {
+					variables.observationFailures.incrementAndGet();
 				}
 			}
 			var previous         = telemetry.getScope();
@@ -64,17 +67,28 @@ component {
 			} catch ( any unavailableChain ) {
 				variables.observationFailures.incrementAndGet();
 			}
-			if ( variables.publishes.size() < 1024 ) {
-				variables.publishes.put(
-					metadata.publishId,
-					{
-						"span"     : publish,
-						"root"     : root,
-						"ownsRoot" : ownsRoot,
-						"created"  : telemetry.timestamp()
-					}
-				);
-			} else {
+			var published = {
+				"span"     : publish,
+				"root"     : root,
+				"ownsRoot" : ownsRoot,
+				"created"  : telemetry.timestamp()
+			};
+			var retained = false;
+			variables.publishLock.lock();
+			try {
+				if ( variables.publishes.size() < 1024 ) {
+					var wasEmpty = variables.publishes.isEmpty();
+					variables.publishes.put( metadata.publishId, published );
+					variables.oldestPublishCreated = wasEmpty ? published.created : min(
+						variables.oldestPublishCreated,
+						published.created
+					);
+					retained = true;
+				}
+			} finally {
+				variables.publishLock.unlock();
+			}
+			if ( !retained ) {
 				publish.finish( "resource_exhausted" );
 				if ( ownsRoot ) {
 					root.finish( "resource_exhausted" );
@@ -88,6 +102,36 @@ component {
 			}
 		}
 	}
+	/** The watermark is a conservative lower bound; removals may cause an early scan, never late expiry. */
+	private array function expiredPublishes( required numeric sweepTime ){
+		var expired = [];
+		variables.publishLock.lock();
+		try {
+			if ( variables.publishes.isEmpty() ) {
+				variables.oldestPublishCreated = 0;
+				return expired;
+			}
+			if ( variables.oldestPublishCreated != 0 && arguments.sweepTime - variables.oldestPublishCreated <= 3600 ) {
+				return expired;
+			}
+			var oldest = 0;
+			for ( var publishId in variables.publishes.keySet().toArray() ) {
+				var published = variables.publishes.get( publishId );
+				if ( isNull( published ) ) {
+					continue;
+				}
+				if ( arguments.sweepTime - published.created > 3600 ) {
+					expired.append( variables.publishes.remove( publishId ) );
+				} else {
+					oldest = oldest == 0 ? published.created : min( oldest, published.created );
+				}
+			}
+			variables.oldestPublishCreated = oldest;
+		} finally {
+			variables.publishLock.unlock();
+		}
+		return expired;
+	}
 	function onCBQJobPublished( event, interceptData ){
 		finishPublish( arguments.interceptData.job, "ok" );
 	}
@@ -98,7 +142,16 @@ component {
 		try {
 			var properties = arguments.job.getProperties();
 			var metadata   = properties.keyExists( "__sentry" ) ? properties[ "__sentry" ] : {};
-			var state      = variables.publishes.remove( metadata.publishId ?: "" );
+			var state      = javacast( "null", "" );
+			variables.publishLock.lock();
+			try {
+				state = variables.publishes.remove( metadata.publishId ?: "" );
+				if ( variables.publishes.isEmpty() ) {
+					variables.oldestPublishCreated = 0;
+				}
+			} finally {
+				variables.publishLock.unlock();
+			}
 			if ( !isNull( state ) ) {
 				state.span.setAttribute( "messaging.message.id", toString( arguments.job.getId() ) );
 				state.span.finish( arguments.status );

@@ -109,10 +109,170 @@ component extends="testbox.system.BaseSpec" {
 				expect( observer.getObservationFailureCount() ).toBe( 0 );
 				root.finish();
 			} );
+			it( "skips healthy publication scans and expires backwards-clock entries without holding the registry lock during callbacks", function(){
+				var clock     = variables.telemetry.timestamp();
+				var telemetry = prepareMock( variables.telemetry );
+				telemetry.$( "timestamp" ).$callback( () => clock );
+				var pending  = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+				var scans    = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
+				var registry = {
+					isEmpty : () => pending.isEmpty(),
+					size    : () => pending.size(),
+					put     : ( id, value ) => pending.put( id, value ),
+					get     : ( id ) => pending.get( id ),
+					remove  : ( id ) => pending.remove( id ),
+					keySet  : function(){
+						scans.incrementAndGet();
+						return pending.keySet();
+					}
+				};
+				var registryLock = createObject( "java", "java.util.concurrent.locks.ReentrantLock" ).init();
+				var observer     = createMock( "sentry.interceptors.QueueObservability" )
+					.$property( "sentry", "variables", variables.service )
+					.$property( "publishes", "variables", registry )
+					.$property( "publishLock", "variables", registryLock );
+				function nextJob(){
+					var properties = {};
+					return {
+						getId         : () => createUUID(),
+						getProperties : () => properties,
+						getQueue      : () => "notifications",
+						getChained    : () => []
+					};
+				}
+				var root = variables.service.startTransaction( "healthy bulk sweep" );
+				telemetry.setScope( { span : root } );
+				var jobs = [];
+				for ( var index = 1; index <= 100; index++ ) {
+					var job = nextJob();
+					jobs.append( job );
+					observer.onCBQJobAdded( {}, { job : job } );
+				}
+				expect( scans.get() ).toBe( 0 );
+				expect( pending.size() ).toBe( 100 );
+				var normalClock = clock;
+				clock -= 4000;
+				var backwards = nextJob();
+				observer.onCBQJobAdded( {}, { job : backwards } );
+				var backwardsId = backwards.getProperties()[ "__sentry" ].publishId;
+				clock += 3600;
+				observer.onCBQJobAdded( {}, { job : nextJob() } );
+				expect( pending.containsKey( backwardsId ) ).toBeTrue();
+				expect( scans.get() ).toBe( 0 );
+				var failedRootFinished = false;
+				var replacement        = pending.get( backwardsId );
+				// A custom span may throw. Cleanup must release the lock, finish its owned root, and retain the next trace.
+				replacement.span       = {
+					finish : function( status ){
+						expect( registryLock.isHeldByCurrentThread() ).toBeFalse();
+						throw( type = "Test.PublishFailure", message = "custom span failure" );
+					}
+				};
+				replacement.ownsRoot = true;
+				replacement.root     = {
+					finish : function( status ){
+						expect( registryLock.isHeldByCurrentThread() ).toBeFalse();
+						failedRootFinished = true;
+					}
+				};
+				var secondRootFinished = false;
+				pending.put(
+					"second-expired",
+					{
+						created  : replacement.created,
+						ownsRoot : true,
+						span     : {
+							finish : function( status ){
+								expect( registryLock.isHeldByCurrentThread() ).toBeFalse();
+								throw( type = "Test.PublishFailure", message = "second custom span failure" );
+							}
+						},
+						root : {
+							finish : function( status ){
+								expect( registryLock.isHeldByCurrentThread() ).toBeFalse();
+								secondRootFinished = true;
+							}
+						}
+					}
+				);
+				clock += 0.001;
+				var recovered = nextJob();
+				observer.onCBQJobAdded( {}, { job : recovered } );
+				expect( pending.containsKey( backwardsId ) ).toBeFalse();
+				expect( scans.get() ).toBe( 1 );
+				expect( failedRootFinished ).toBeTrue();
+				expect( secondRootFinished ).toBeTrue();
+				expect( pending.containsKey( "second-expired" ) ).toBeFalse();
+				expect( observer.getObservationFailureCount() ).toBe( 2 );
+				expect( recovered.getProperties().keyExists( "__sentry" ) ).toBeTrue();
+				clock = normalClock;
+				for ( var job in jobs ) {
+					observer.onCBQJobPublished( {}, { job : job } );
+				}
+				observer.onCBQJobPublishException( {}, { job : recovered } );
+				root.finish();
+			} );
+			it( "bounds concurrent publication admission and releases every callback without holding the registry lock", function(){
+				var pending = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+				var clock   = variables.telemetry.timestamp();
+				for ( var index = 1; index <= 1023; index++ ) {
+					pending.put( "retained-" & index, { created : clock } );
+				}
+				var observer = createMock( "sentry.interceptors.QueueObservability" )
+					.$property( "sentry", "variables", variables.service )
+					.$property( "publishes", "variables", pending )
+					.$property( "oldestPublishCreated", "variables", clock );
+				var start      = createObject( "java", "java.util.concurrent.CountDownLatch" ).init( 1 );
+				var added      = createObject( "java", "java.util.concurrent.CountDownLatch" ).init( 8 );
+				var violations = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
+				var names      = [];
+				for ( var index = 1; index <= 8; index++ ) {
+					var name = "publish-" & createUUID();
+					names.append( name );
+					thread
+						name          =name
+						action        ="run"
+						observer      =observer
+						pending       =pending
+						start         =start
+						added         =added
+						violations    =violations {
+						var properties= {};
+						var job       = {
+							getId         : () => "concurrent",
+							getProperties : () => properties,
+							getQueue      : () => "notifications",
+							getChained    : () => []
+						};
+						attributes.start.await();
+						try {
+							attributes.observer.onCBQJobAdded( {}, { job : job } );
+						} finally {
+							attributes.added.countDown();
+						}
+						attributes.added.await(
+							5,
+							createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
+						);
+						if ( attributes.pending.size() > 1024 || !properties.keyExists( "__sentry" ) ) {
+							attributes.violations.incrementAndGet();
+						}
+						attributes.observer.onCBQJobPublished( {}, { job : job } );
+					}
+				}
+				start.countDown();
+				thread action="join" name=names.toList() timeout=10000;
+				for ( var name in names ) {
+					expect( cfthread[ name ].status ).toBe( "COMPLETED" );
+				}
+				expect( violations.get() ).toBe( 0 );
+				expect( pending.size() ).toBe( 1023 );
+				expect( observer.getObservationFailureCount() ).toBe( 0 );
+			} );
 			it( "reports a concrete matching backend SDK version for portable Git installations", function(){
 				var descriptor = deserializeJSON( fileRead( expandPath( "/sentry/box.json" ) ) );
 				var module     = new sentry.ModuleConfig();
-				expect( descriptor.version ).toBe( "2.2.1+bulk.clock.1" );
+				expect( descriptor.version ).toBe( "2.2.1+bulk.clock.2" );
 				expect( module.version ).toBe( descriptor.version );
 				var root = variables.service.startTransaction( "SDK version" );
 				root.finish();
