@@ -13,7 +13,7 @@ component {
 		variables[ "transport" ] = new EnvelopeTransport(
 			variables.settings,
 			owner.getSentryUrl() & "/api/" & owner.getProjectID() & "/envelope/",
-			"Sentry sentry_version=7,sentry_key=" & owner.getPublicKey() & ",sentry_client=sentry.cfml/@build.version@",
+			"Sentry sentry_version=7,sentry_key=" & owner.getPublicKey() & ",sentry_client=sentry.cfml/2.2.1+bulk.clock.1",
 			owner.getEnabled()
 		);
 		variables[ "buffers" ]  = { "log" : [], "trace_metric" : [] };

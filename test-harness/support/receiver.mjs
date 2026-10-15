@@ -20,7 +20,8 @@ http.createServer(async (request, response) => {
       if (bytes.length !== length || (offset < body.length && body[offset++] !== 10)) throw Error('Incorrect byte length');
       items.push({ header: itemHeader, payload: ['attachment', 'replay_recording'].includes(itemHeader.type) ? bytes.toString('base64') : JSON.parse(bytes.toString('utf8')) });
     }
-    envelopes.push({ header, items });
+    const sdkClient = /(?:^|,)\s*sentry_client=([^,]+)/.exec(request.headers['x-sentry-auth'] || '')?.[1] || '';
+    envelopes.push({ header, items, sdkClient });
     const reply = mode;
     setTimeout(() => { response.writeHead(reply.status ?? 200, reply.headers ?? {}); response.end('{}'); }, reply.delay ?? 0);
   } catch (error) { response.writeHead(400); response.end(error.message); }

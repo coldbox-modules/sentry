@@ -13,6 +13,119 @@ component extends="testbox.system.BaseSpec" {
 			afterEach( function(){
 				variables.service.shutdown();
 			} );
+			it( "reads the publication sweep clock once per callback while preserving expiry and every new trace", function(){
+				var clock     = variables.telemetry.timestamp();
+				var reads     = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
+				var telemetry = prepareMock( variables.telemetry );
+				telemetry
+					.$( "timestamp" )
+					.$callback( function(){
+						reads.incrementAndGet();
+						return clock;
+					} );
+				var pending  = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+				var observer = createMock( "sentry.interceptors.QueueObservability" )
+					.$property( "sentry", "variables", variables.service )
+					.$property( "publishes", "variables", pending );
+				var finished = [];
+				function abandonedSpan( required string label, required array completions ){
+					var label     = arguments.label;
+					var eventSink = arguments.completions;
+					return {
+						finish : function( status ){
+							eventSink.append( label & ":" & status );
+						}
+					};
+				}
+				function publicationJob( required numeric index ){
+					var properties = {
+						"deliveryId" : "native-" & arguments.index,
+						"private"    : "PRIVATE"
+					};
+					var id = "job-" & arguments.index;
+					return {
+						getId         : () => id,
+						getProperties : () => properties,
+						getQueue      : () => "notifications",
+						getChained    : () => []
+					};
+				}
+				var root = variables.service.startTransaction( "bulk publication" );
+				telemetry.setScope( { span : root } );
+				var baseline = publicationJob( 0 );
+				reads.set( 0 );
+				observer.onCBQJobAdded( {}, { job : baseline } );
+				var callbackReads = reads.get();
+				expect( callbackReads ).toBeGTE( 3 );
+				observer.onCBQJobPublished( {}, { job : baseline } );
+				expect( pending.size() ).toBe( 0 );
+				for (
+					var entry in [
+						{ id : "expired-owned", age : 3601, ownsRoot : true },
+						{ id : "expired-borrowed", age : 3601, ownsRoot : false },
+						{ id : "exact-boundary", age : 3600, ownsRoot : true },
+						{ id : "live", age : 10, ownsRoot : true }
+					]
+				) {
+					pending.put(
+						entry.id,
+						{
+							created  : clock - entry.age,
+							ownsRoot : entry.ownsRoot,
+							span     : abandonedSpan( entry.id & "-span", finished ),
+							root     : abandonedSpan( entry.id & "-root", finished )
+						}
+					);
+				}
+				var jobs = [];
+				reads.set( 0 );
+				for ( var index = 1; index <= 20; index++ ) {
+					var job = publicationJob( index );
+					jobs.append( job );
+					observer.onCBQJobAdded( {}, { job : job } );
+					var metadata = job.getProperties()[ "__sentry" ];
+					expect( metadata.enqueuedAt ).toBe( clock );
+					expect( reFind( "^[a-f0-9]{32}$", metadata.publishId ) ).toBe( 1 );
+					expect( metadata.headers[ "sentry-trace" ].left( 32 ) ).toBe( root.getContext().trace_id );
+					expect( metadata.headers[ "sentry-trace" ].right( 2 ) ).toBe( "-1" );
+					expect( JSONSerialize( metadata ) ).notToInclude( "PRIVATE" );
+					expect( telemetry.getScope().span.getContext().span_id ).toBe( root.getContext().span_id );
+				}
+				expect( reads.get() ).toBe( callbackReads * 20 );
+				expect( pending.size() ).toBe( 22 );
+				expect( pending.containsKey( "exact-boundary" ) ).toBeTrue();
+				expect( pending.containsKey( "live" ) ).toBeTrue();
+				expect( finished.sort( "text" ) ).toBe( [
+					"expired-borrowed-span:deadline_exceeded",
+					"expired-owned-root:deadline_exceeded",
+					"expired-owned-span:deadline_exceeded"
+				] );
+				for ( var job in jobs ) {
+					observer.onCBQJobPublished( {}, { job : job } );
+				}
+				expect( pending.size() ).toBe( 2 );
+				expect( root.getChildren().len() ).toBe( 21 );
+				expect( root.getChildren().every( ( span ) => span.isFinished() ) ).toBeTrue();
+				expect( observer.getObservationFailureCount() ).toBe( 0 );
+				root.finish();
+			} );
+			it( "reports a concrete matching backend SDK version for portable Git installations", function(){
+				var descriptor = deserializeJSON( fileRead( expandPath( "/sentry/box.json" ) ) );
+				var module     = new sentry.ModuleConfig();
+				expect( descriptor.version ).toBe( "2.2.1+bulk.clock.1" );
+				expect( module.version ).toBe( descriptor.version );
+				var root = variables.service.startTransaction( "SDK version" );
+				root.finish();
+				expect( variables.service.flush( 5000 ) ).toBeTrue();
+				cfhttp( url = "http://127.0.0.1:60320/state" );
+				var received    = deserializeJSON( cfhttp.fileContent );
+				var ownEnvelope = received.filter( ( envelope ) => envelope.items.some( ( item ) => item.header.type == "transaction" && item.payload.transaction == "SDK version" ) );
+				expect( ownEnvelope.len() ).toBe( 1 );
+				expect( ownEnvelope[ 1 ].sdkClient ).toBe( "sentry.cfml/" & descriptor.version );
+				expect( ownEnvelope[ 1 ].sdkClient ).notToInclude( "@build." );
+				var browser = deserializeJSON( fileRead( expandPath( "/sentry/browser/package.json" ) ) );
+				expect( browser.version ).toBe( "2.2.1" );
+			} );
 			it( "preserves trusted sampling baggage without credential labels", function(){
 				var root = variables.service.startTransaction(
 					"task",

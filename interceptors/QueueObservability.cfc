@@ -13,9 +13,10 @@ component {
 			}
 			var job       = arguments.interceptData.job;
 			var telemetry = variables.sentry.getObservability();
+			var sweepTime = telemetry.timestamp();
 			for ( var publishId in variables.publishes.keySet().toArray() ) {
 				var published = variables.publishes.get( publishId );
-				if ( !isNull( published ) && telemetry.timestamp() - published.created > 3600 ) {
+				if ( !isNull( published ) && sweepTime - published.created > 3600 ) {
 					var expired = variables.publishes.remove( publishId );
 					if ( !isNull( expired ) ) {
 						expired.span.finish( "deadline_exceeded" );
