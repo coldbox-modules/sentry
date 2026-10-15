@@ -322,6 +322,58 @@ component extends="testbox.system.BaseSpec" {
 				observer.onCBQJobPublished( {}, { job : second } );
 				expect( observer.getObservationFailureCount() ).toBe( 0 );
 			} );
+			it( "builds publish headers once for a live parent while preserving continuation from a finished parent", function(){
+				var reads     = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
+				var telemetry = variables.telemetry;
+				var service   = prepareMock( variables.service );
+				service
+					.$( "getTraceHeaders" )
+					.$callback( function(){
+						reads.incrementAndGet();
+						return telemetry.getTraceHeaders();
+					} );
+				var observer = createMock( "sentry.interceptors.QueueObservability" ).$property(
+					"sentry",
+					"variables",
+					service
+				);
+				var root = service.startTransaction( "request publication parent" );
+				root.setBaggage( "sentry-release=bulk-test" );
+				var scope = { span : root, requestMarker : "retained" };
+				telemetry.setScope( scope );
+				function headerJob(){
+					var properties = { deliveryId : createUUID() };
+					return {
+						getId         : () => "headers",
+						getProperties : () => properties,
+						getQueue      : () => "notifications",
+						getChained    : () => []
+					};
+				}
+				var first = headerJob();
+				observer.onCBQJobAdded( {}, { job : first } );
+				expect( reads.get() ).toBe( 1 );
+				var headers = first.getProperties()[ "__sentry" ].headers;
+				expect( headers[ "sentry-trace" ].left( 32 ) ).toBe( root.getContext().trace_id );
+				expect( headers[ "sentry-trace" ].right( 2 ) ).toBe( "-1" );
+				expect( headers.baggage ).toInclude( "sentry-release=bulk-test" );
+				expect( telemetry.getScope().requestMarker ).toBe( "retained" );
+				observer.onCBQJobPublished( {}, { job : first } );
+				var child = root.getChildren()[ 1 ].toPayload();
+				expect( child.parent_span_id ).toBe( root.getContext().span_id );
+				expect( headers[ "sentry-trace" ] ).toInclude( child.span_id );
+				root.finish();
+				// A finished parent still requires headers for the new owned transaction as well as its child.
+				var second = headerJob();
+				observer.onCBQJobAdded( {}, { job : second } );
+				expect( reads.get() ).toBe( 3 );
+				expect( second.getProperties()[ "__sentry" ].headers[ "sentry-trace" ].left( 32 ) ).toBe(
+					root.getContext().trace_id
+				);
+				observer.onCBQJobPublished( {}, { job : second } );
+				expect( observer.getObservationFailureCount() ).toBe( 0 );
+				telemetry.clearScope();
+			} );
 			it( "reports a concrete matching backend SDK version for portable Git installations", function(){
 				var descriptor = deserializeJSON( fileRead( expandPath( "/sentry/box.json" ) ) );
 				var module     = new sentry.ModuleConfig();

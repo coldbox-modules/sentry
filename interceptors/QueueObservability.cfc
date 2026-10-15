@@ -33,15 +33,20 @@ component {
 			var ownsRoot         = !previous.keyExists( "span" ) || previous.span.isFinished();
 			var properties       = job.getProperties();
 			var existingMetadata = properties.keyExists( "__sentry" ) ? properties[ "__sentry" ] : {};
-			var continued        = previous.keyExists( "span" ) ? variables.sentry.getTraceHeaders() : (
-				existingMetadata.headers ?: {}
-			);
-			var root = !ownsRoot ? previous.span : telemetry.startTransaction(
-				"publish " & ( job.getQueue() ?: "default" ),
-				"queue.task",
-				continued,
-				true
-			);
+			var root             = "";
+			if ( ownsRoot ) {
+				var continued = previous.keyExists( "span" ) ? variables.sentry.getTraceHeaders() : (
+					existingMetadata.headers ?: {}
+				);
+				root = telemetry.startTransaction(
+					"publish " & ( job.getQueue() ?: "default" ),
+					"queue.task",
+					continued,
+					true
+				);
+			} else {
+				root = previous.span;
+			}
 			telemetry.setScope( { "span" : root } );
 			var publish = telemetry.startSpan(
 				"publish " & ( job.getQueue() ?: "default" ),
