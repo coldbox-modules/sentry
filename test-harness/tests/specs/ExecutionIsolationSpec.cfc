@@ -269,6 +269,59 @@ component extends="testbox.system.BaseSpec" {
 				expect( pending.size() ).toBe( 1023 );
 				expect( observer.getObservationFailureCount() ).toBe( 0 );
 			} );
+			it( "retains zero-time entries at the exact TTL boundary and expires them after earlier entries are removed", function(){
+				var clock     = 3600;
+				var telemetry = prepareMock( variables.telemetry );
+				telemetry.$( "timestamp" ).$callback( () => clock );
+				// Ordered entries reproduce zero followed by a positive survivor during minimum recomputation.
+				var pending  = createObject( "java", "java.util.LinkedHashMap" ).init();
+				var finished = [];
+				for (
+					var entry in [
+						{ id : "negative", created : -1 },
+						{ id : "zero", created : 0 },
+						{ id : "positive", created : 1 }
+					]
+				) {
+					var label = entry.id;
+					var span  = (
+						function( id ){
+							return {
+								finish : function( status ){
+									finished.append( id );
+								}
+							};
+						}
+					)( label );
+					pending.put( entry.id, { created : entry.created, span : span, ownsRoot : false } );
+				}
+				var observer = createMock( "sentry.interceptors.QueueObservability" )
+					.$property( "sentry", "variables", variables.service )
+					.$property( "publishes", "variables", pending )
+					.$property( "oldestPublishCreated", "variables", -1 );
+				function zeroTimeJob(){
+					var properties = {};
+					return {
+						getId         : () => "zero-time",
+						getProperties : () => properties,
+						getQueue      : () => "notifications",
+						getChained    : () => []
+					};
+				}
+				var first = zeroTimeJob();
+				observer.onCBQJobAdded( {}, { job : first } );
+				expect( pending.containsKey( "negative" ) ).toBeFalse();
+				expect( pending.containsKey( "zero" ) ).toBeTrue();
+				clock += 0.001;
+				var second = zeroTimeJob();
+				observer.onCBQJobAdded( {}, { job : second } );
+				expect( pending.containsKey( "zero" ) ).toBeFalse();
+				expect( pending.containsKey( "positive" ) ).toBeTrue();
+				expect( finished ).toBe( [ "negative", "zero" ] );
+				observer.onCBQJobPublished( {}, { job : first } );
+				observer.onCBQJobPublished( {}, { job : second } );
+				expect( observer.getObservationFailureCount() ).toBe( 0 );
+			} );
 			it( "reports a concrete matching backend SDK version for portable Git installations", function(){
 				var descriptor = deserializeJSON( fileRead( expandPath( "/sentry/box.json" ) ) );
 				var module     = new sentry.ModuleConfig();

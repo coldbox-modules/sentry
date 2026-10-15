@@ -111,10 +111,11 @@ component {
 				variables.oldestPublishCreated = 0;
 				return expired;
 			}
-			if ( variables.oldestPublishCreated != 0 && arguments.sweepTime - variables.oldestPublishCreated <= 3600 ) {
+			if ( arguments.sweepTime - variables.oldestPublishCreated <= 3600 ) {
 				return expired;
 			}
-			var oldest = 0;
+			var oldest      = 0;
+			var hasSurvivor = false;
 			for ( var publishId in variables.publishes.keySet().toArray() ) {
 				var published = variables.publishes.get( publishId );
 				if ( isNull( published ) ) {
@@ -123,7 +124,8 @@ component {
 				if ( arguments.sweepTime - published.created > 3600 ) {
 					expired.append( variables.publishes.remove( publishId ) );
 				} else {
-					oldest = oldest == 0 ? published.created : min( oldest, published.created );
+					oldest      = hasSurvivor ? min( oldest, published.created ) : published.created;
+					hasSurvivor = true;
 				}
 			}
 			variables.oldestPublishCreated = oldest;
