@@ -5,6 +5,7 @@ component {
 		variables[ "owner" ]    = arguments.owner;
 		variables[ "settings" ] = arguments.settings;
 		variables.settings.append( defaults(), false );
+		variables[ "clock" ]              = createObject( "java", "java.lang.System" );
 		variables[ "scope" ]              = createObject( "java", "java.lang.ThreadLocal" ).init();
 		variables[ "completionFailures" ] = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init(
 			0
@@ -95,7 +96,7 @@ component {
 		return variables.settings.maxSpans;
 	}
 	function timestamp(){
-		return createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000;
+		return variables.clock.currentTimeMillis() / 1000;
 	}
 	function id(){
 		return lCase( replace( createUUID(), "-", "", "all" ) );
