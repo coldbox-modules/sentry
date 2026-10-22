@@ -299,6 +299,36 @@ component accessors=true singleton threadSafe {
 	function newRequestTimings(){
 		return variables.observability.newRequestTimings();
 	}
+	function beginRequestObservation(){
+		return variables.observability.beginRequestObservation( argumentCollection = arguments );
+	}
+	function finishRequestObservation(){
+		return variables.observability.finishRequestObservation( argumentCollection = arguments );
+	}
+	function requestSaturation(){
+		return variables.observability.requestSaturation( argumentCollection = arguments );
+	}
+	function captureRequestSaturation(){
+		return variables.observability.captureRequestSaturation( argumentCollection = arguments );
+	}
+	function captureRequestExecutor(){
+		return variables.observability.captureRequestExecutor( argumentCollection = arguments );
+	}
+	function requestExecutorDiagnostics(){
+		return variables.observability.requestExecutorDiagnostics( argumentCollection = arguments );
+	}
+	function captureQueueWorkerHealth(){
+		return variables.observability.captureQueueWorkerHealth( argumentCollection = arguments );
+	}
+	function queueWorkerDiagnostics(){
+		return variables.observability.queueWorkerDiagnostics( argumentCollection = arguments );
+	}
+	function captureCBQWorkerHealth(){
+		return variables.observability.captureCBQWorkerHealth( argumentCollection = arguments );
+	}
+	function withDependency(){
+		return variables.observability.withDependency( argumentCollection = arguments );
+	}
 	function withOperation(){
 		return variables.observability.withOperation( argumentCollection = arguments );
 	}

@@ -102,3 +102,84 @@ Existing `withMonitor`/`captureCheckIn` already support scheduled jobs. Configur
 The companion and official browser SDK already provide browser tracing/Web Vitals and release/environment configuration. Keep that existing integration for LCP/INP/CLS. Do not initialize a second browser SDK. Compare vitals by fixed page/component name, release, browser and sufficient sample count. Retain existing navigation/resource span privacy filters. Network failures, CSP and dynamic-import failures are distinct observations; a later successful probe cannot prove the original request succeeded.
 
 CommuniArts already has Vue/Inertia navigation tracing, Postmark/storage/Typesense spans, a bounded preload/resource diagnostic collector, and replay upload triggered by feedback. Those capture policies, screenshot/tunnel authorization and resource classification stay in the app. This change does not broaden replay/error capture or add redundant browser listeners. Ensure frontend and backend release IDs identify the actual deployed assets/source; package installation and accepted envelopes do not establish deployment or provider indexing.
+
+## Request saturation
+
+Enable `enableMetrics: true` and `enableRequestSaturation: true` to count eligible ColdBox requests independently of trace sampling or `enableRequestTracing`. The existing `requestFilter` applies. Request capture starts one observation; `postProcess` and explicit `endRequest()` finish it once. The exception hook finishes its saturation observation even when ColdBox skips `postProcess`, while retaining an existing trace for error correlation. Always call `sentry.endRequest()` in Application.cfc/Application.bx `onRequestEnd` for early redirects/aborts and final trace/scope cleanup after exceptions. A hard engine termination that bypasses all cleanup cannot be detected reliably by the module.
+
+Poll `sentry.captureRequestSaturation()` from an existing scheduler. It emits `http.server.active_requests`, `http.server.oldest_active` (seconds), `http.server.long_running`, and cumulative `http.server.untracked_starts.total`. `sentry.requestSaturation()` returns the same local snapshot without emitting. Ages use a monotonic JVM clock; `requestLongRunningSeconds` defaults to 30. Long-running requests are not automatically declared timed out. An authenticated engine/application timeout callback can call `endRequest(timedOut=true)` or `finishRequestObservation(token,timedOut=true)` to record `http.server.timeouts` once.
+
+Standalone consumers can pair `token = sentry.beginRequestObservation()` with `sentry.finishRequestObservation(token)` in `finally`. Tokens have private start state and belong to their service. Retention is capped by `maxObservedRequests` (default/maximum 4096). When full, new starts are untracked and counted; observed active count is then a lower bound. Abandoned observations remain visible rather than silently expiring into a fabricated recovery. All counts reset on service restart; collection is local to that service/process.
+
+Engine executor information is explicit because servlet/runtime pool APIs differ:
+
+```cfml
+// moduleSettings.sentry
+requestExecutorNames: [ "http" ]
+
+sentry.captureRequestExecutor( "http", function(){
+    return executorAdapter.snapshot(); // active, max, queued, rejected (cumulative)
+} );
+health = sentry.requestExecutorDiagnostics( "http" );
+```
+
+Only finite nonnegative numeric fields are emitted as `http.server.executor.active`, `.max`, `.queued`, and `.rejected.total` gauges. The module does not inspect private engine pools. Unsupported fields stay absent. A failed or empty snapshot returns false, emits no fabricated zero, and updates bounded per-name `lastSuccessAt`, `lastFailureAt`, and `failures` diagnostics. Executor and worker samplers permit up to 32 configured technical names of 1–48 ASCII letters/digits/underscore/dot/hyphen; case aliases are deduplicated and callers must use the first configured spelling. Disabled metrics skip callbacks entirely.
+
+## Dependency outcomes
+
+```cfml
+// moduleSettings.sentry
+ dependencyNames: [ "mail", "storage", "search" ]
+
+result = sentry.withDependency( "mail", function(){
+    return mailClient.send( message );
+}, function( result, failure ){
+    if ( !isNull( arguments.failure ) ) {
+        return { outcome: "error" }; // Map known exception types here; do not return exception text.
+    }
+    return {
+        outcome: result.wasAccepted() ? "success" : "rejected",
+        statusCode: result.statusCode,
+        retryCount: result.retryCount,
+        circuitState: result.circuitState
+    };
+} );
+```
+
+One callback invocation represents one logical dependency call, including any retries the callback owns. The wrapper never retries or changes circuit-breaker policy. It preserves the callback result, null/void return and original exception. The classifier receives `(result, failure)` with the unused argument null and may return only an allowlisted outcome (`success`, `error`, `timeout`, `connection_error`, `cancelled`, `rejected`, `unknown`), optional HTTP `statusCode` (100–599), nonnegative integer `retryCount`, and `circuitState` (`open`, `closed`, `half_open`). An exception cannot become `success`. Without a classifier, normal return means `success` and a thrown callback means `error`; invalid/failing classifiers produce `unknown`. The consumer must interpret provider responses—HTTP success is not necessarily business success or delivery.
+
+The wrapper emits `dependency.calls`, `dependency.duration` (milliseconds) and optional `dependency.retries` distributions, with fixed dependency name/outcome and optional HTTP status class/circuit state. Duration covers the callback, excluding telemetry setup, classification and export. Circuit state describes the observed call; it is not a continuously sampled breaker gauge. An `app.dependency` span follows existing sampling. Existing `withHttpSpan` remains the transport span/propagation mechanism; wrap it inside this logical dependency observation where appropriate, without adding a second HTTP span. Results, bodies, exception messages and URLs never become dependency metric labels. Unconfigured names or disabled metrics run the callback directly without classification or observation.
+
+## Queue worker health
+
+```cfml
+// moduleSettings.sentry
+queueWorkerNames: [ "mail" ]
+
+// Optional cbq pool adapter, using getQuantity() and supported executor getStats():
+sentry.captureCBQWorkerHealth( "mail", workerPool );
+
+// Or supply a provider's supported observations:
+sentry.captureQueueWorkerHealth( "mail", function(){
+    return workerAdapter.snapshot();
+} );
+health = sentry.queueWorkerDiagnostics( "mail" );
+```
+
+The cbq adapter emits configured worker concurrency and active executions from executor statistics when the executor advertises task-method support. Its current executor capacity is not an activity count. An unavailable/uninitialized executor leaves active executions absent; these measurements do not prove that workers are alive. A provider snapshot may additionally supply actual `activeWorkers`, `lastHeartbeatAt` (JVM-compatible Unix seconds), `runnable`, `delayed`, `reserved`, `staleReservations`, and cumulative `retries`/`exhausted`. Fields map to `queue.workers.configured`, `queue.workers.active`, `queue.executions.active`, `queue.worker.heartbeat_age` (seconds), `queue.backlog.runnable`, `.delayed`, `.reserved`, `queue.reservations.stale`, `queue.retries.total`, and `queue.exhausted.total`, labeled only by configured `worker.name`. A heartbeat must come from real worker activity; zero/absent/future heartbeat timestamps are omitted. A successful poll does not manufacture a worker heartbeat.
+
+Only available finite nonnegative numeric fields are emitted. Cumulative retry/exhaustion gauges reset with their provider; compute deltas and handle resets. They differ from existing per-attempt and terminal-hook counters. Choose one producer for each series. Failed/empty snapshots emit no fabricated zeros and leave the last successful timestamp unchanged; read diagnostics to detect stale polling. No polling threads, queue mutations, job IDs or payload capture are introduced.
+
+The optional cbq database-provider adapter separates pending work from delayed work and expired reservations:
+
+```cfml
+queueHealth = new sentry.models.telemetry.DatabaseQueueHealth(
+    queryFactory = function(){ return wirebox.getInstance( "QueryBuilder@qb" ); },
+    table = "cbq_jobs"
+);
+sentry.captureQueueWorkerHealth( "mail", function(){
+    return queueHealth.snapshot( "mail" );
+} );
+```
+
+Use a fresh correctly configured qb builder per call. `snapshot(queue)` performs one parameterized aggregate query excluding completed/failed jobs. Unclaimed jobs are runnable when `availableDate <= now`, delayed otherwise. Reserved/claimed jobs form a separate total; a lease is stale when its `availableDate <= now`, matching the inspected cbq database-provider lease convention. These are database observations, not proof of a running worker or permission to release a lease. Configured worker definitions/connection selection and scheduler cadence belong to the consumer. Other providers need their own supported snapshot adapter. No mandatory qb/cbq dependency is added.

@@ -5,6 +5,43 @@ component {
 		variables[ "owner" ]    = arguments.owner;
 		variables[ "settings" ] = arguments.settings;
 		variables.settings.append( defaults(), false );
+		variables.requests = new RequestSaturation(
+			this,
+			variables.settings.maxObservedRequests,
+			variables.settings.requestLongRunningSeconds
+		);
+		variables.dependencies = new MetricLabels( variables.settings.dependencyNames );
+		variables.executors    = new HealthSampler(
+			this,
+			variables.settings.requestExecutorNames,
+			{
+				"active"   : { "name" : "http.server.executor.active", "unit" : "none" },
+				"max"      : { "name" : "http.server.executor.max", "unit" : "none" },
+				"queued"   : { "name" : "http.server.executor.queued", "unit" : "none" },
+				"rejected" : {
+					"name" : "http.server.executor.rejected.total",
+					"unit" : "none"
+				}
+			},
+			"executor.name"
+		);
+		variables.workers = new HealthSampler(
+			this,
+			variables.settings.queueWorkerNames,
+			{
+				"configuredWorkers" : { "name" : "queue.workers.configured", "unit" : "none" },
+				"activeWorkers"     : { "name" : "queue.workers.active", "unit" : "none" },
+				"activeExecutions"  : { "name" : "queue.executions.active", "unit" : "none" },
+				"lastHeartbeatAt"   : { "name" : "queue.worker.heartbeat_age", "unit" : "second" },
+				"runnable"          : { "name" : "queue.backlog.runnable", "unit" : "none" },
+				"delayed"           : { "name" : "queue.backlog.delayed", "unit" : "none" },
+				"reserved"          : { "name" : "queue.backlog.reserved", "unit" : "none" },
+				"staleReservations" : { "name" : "queue.reservations.stale", "unit" : "none" },
+				"retries"           : { "name" : "queue.retries.total", "unit" : "none" },
+				"exhausted"         : { "name" : "queue.exhausted.total", "unit" : "none" }
+			},
+			"worker.name"
+		);
 		variables.delivery                = new DeliveryDiagnostics( variables.settings.maxPendingEnvelopes );
 		variables[ "scope" ]              = createObject( "java", "java.lang.ThreadLocal" ).init();
 		variables[ "completionFailures" ] = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init(
@@ -38,6 +75,12 @@ component {
 			"maxPendingEnvelopes"            : 64,
 			"enableDeliveryDiagnostics"      : false,
 			"enableRequestTracing"           : false,
+			"enableRequestSaturation"        : false,
+			"maxObservedRequests"            : 4096,
+			"requestLongRunningSeconds"      : 30,
+			"requestExecutorNames"           : [],
+			"dependencyNames"                : [],
+			"queueWorkerNames"               : [],
 			"queryAdapter"                   : "none",
 			"enableQueueTracing"             : false,
 			"enableQueueJobMetrics"          : false,
@@ -119,37 +162,44 @@ component {
 		}
 		return 200;
 	}
-	function endRequest( numeric statusCode = 0 ){
+	function endRequest( numeric statusCode = 0, boolean timedOut = false ){
 		var current = getScope();
 		if ( !current.keyExists( "requestState" ) ) {
 			return;
 		}
-		var span = current.requestState.span;
 		try {
-			if ( !span.isFinished() ) {
-				var code = arguments.statusCode > 0 ? arguments.statusCode : responseStatus();
-				span.setAttribute( "http.response.status_code", code );
-				if ( code >= 500 ) {
-					span.setStatus( "internal_error" );
-				}
-				counter(
-					"http.server.requests",
-					1,
-					{
-						"route"                     : span.toPayload().description,
-						"http.response.status_code" : code
+			if ( current.requestState.keyExists( "span" ) ) {
+				var span = current.requestState.span;
+				if ( !span.isFinished() ) {
+					var code = arguments.statusCode > 0 ? arguments.statusCode : responseStatus();
+					span.setAttribute( "http.response.status_code", code );
+					if ( code >= 500 ) {
+						span.setStatus( "internal_error" );
 					}
-				);
-				distribution(
-					"http.server.duration",
-					max( 0, timestamp() - span.toPayload().start_timestamp ) * 1000,
-					{ "route" : span.toPayload().description },
-					"millisecond"
-				);
-				span.finish();
-				flushSignals();
+					counter(
+						"http.server.requests",
+						1,
+						{
+							"route"                     : span.toPayload().description,
+							"http.response.status_code" : code
+						}
+					);
+					distribution(
+						"http.server.duration",
+						max( 0, timestamp() - span.toPayload().start_timestamp ) * 1000,
+						{ "route" : span.toPayload().description },
+						"millisecond"
+					);
+					span.finish();
+					flushSignals();
+				}
 			}
 		} finally {
+			try {
+				if ( current.requestState.keyExists( "saturationToken" ) )
+					finishRequestObservation( current.requestState.saturationToken, arguments.timedOut );
+			} catch ( any unavailable ) {
+			}
 			setScope( current.requestState.previous );
 		}
 	}
@@ -448,6 +498,83 @@ component {
 			return false;
 		}
 	}
+	function beginRequestObservation(){
+		if (
+			!variables.settings.enableMetrics || !variables.settings.enableRequestSaturation || !variables.owner.getEnabled()
+		)
+			return {};
+		try {
+			return variables.requests.begin();
+		} catch ( any unavailable ) {
+			return {};
+		}
+	}
+	function finishRequestObservation( required struct token, boolean timedOut = false ){
+		try {
+			return variables.requests.finish( argumentCollection = arguments );
+		} catch ( any unavailable ) {
+			return false;
+		}
+	}
+	function requestSaturation(){
+		return variables.requests.snapshot();
+	}
+	function captureRequestSaturation(){
+		if (
+			!variables.settings.enableMetrics || !variables.settings.enableRequestSaturation || !variables.owner.getEnabled()
+		)
+			return {};
+		try {
+			return variables.requests.capture();
+		} catch ( any unavailable ) {
+			return {};
+		}
+	}
+	function captureRequestExecutor( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.owner.getEnabled() ) return false;
+		return variables.executors.capture( argumentCollection = arguments );
+	}
+	function requestExecutorDiagnostics( required string name ){
+		return variables.executors.diagnostics( arguments.name );
+	}
+	function captureQueueWorkerHealth( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.owner.getEnabled() ) return false;
+		return variables.workers.capture( argumentCollection = arguments );
+	}
+	function queueWorkerDiagnostics( required string name ){
+		return variables.workers.diagnostics( arguments.name );
+	}
+	function captureCBQWorkerHealth( required string name, required any pool ){
+		var workerPool = arguments.pool;
+		return captureQueueWorkerHealth( arguments.name, function(){
+			var sample = { "configuredWorkers" : workerPool.getQuantity() };
+			try {
+				// ColdBox's unsupported getActiveCount fallback is zero; require the taskMethods capability.
+				var stats = workerPool.getExecutor().getStats();
+				if (
+					stats.keyExists( "features" ) && stats.features.keyExists( "taskMethods" ) && stats.features.taskMethods && stats.keyExists( "activeCount" )
+				)
+					sample[ "activeExecutions" ] = stats.activeCount;
+			} catch ( any unavailable ) {
+			}
+			return sample;
+		} );
+	}
+
+	function withDependency(
+		required string name,
+		required function callback,
+		any classify = ""
+	){
+		if (
+			!variables.settings.enableMetrics || !variables.owner.getEnabled() || !variables.dependencies.contains(
+				arguments.name
+			)
+		)
+			return arguments.callback();
+		return new Dependency( this ).run( argumentCollection = arguments );
+	}
+
 	function withOperation(
 		required string name,
 		required function callback,

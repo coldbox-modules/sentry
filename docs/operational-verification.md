@@ -1,12 +1,12 @@
 # Local operational-observability verification — October 22, 2026
 
-After subagent review and the timestamp clock correction, the final module harness passed **78/78** on each local engine, with zero failures, errors or skips:
+After subagent review, the timestamp clock correction and the request/dependency/worker-health additions, the final module harness passed **95/95** on each local engine, with zero failures, errors or skips:
 
 | Engine | JVM / servlet runtime | Evidence |
 | --- | --- | --- |
-| Lucee 5.4.8.2 | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-timestamp-final-lucee5.json` |
-| BoxLang 1.18.0+66, reported by servlet startup | Temurin 21.0.10+7, Runwar 6.1.8 | `/tmp/sentry-timestamp-final-boxlang.json` |
-| Adobe ColdFusion 2023 update 25 (`2023,0,25,330977`) | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-timestamp-final-adobe.json` |
+| Lucee 5.4.8.2 | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-saturation-final-lucee5.json` |
+| BoxLang 1.18.0+66, reported by servlet startup | Temurin 21.0.10+7, Runwar 6.1.8 | `/tmp/sentry-saturation-final-boxlang.json` |
+| Adobe ColdFusion 2023 update 25 (`2023,0,25,330977`) | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-saturation-final-adobe.json` |
 
 The BoxLang engine package is labeled `1.18.6+62`; its startup reports the runtime version above. Do not infer the running engine version from the package label or the legacy TestBox reporter. The local CommandBox initial-install hook failed before boot with missing `CFENGINE` metadata; the owned engine then used the existing compatible `bx-compat-cfml`/`bx-esapi` runtime modules and explicit Jakarta Runwar 6.1.8. These are local harness setup details, not qualified fresh-install behavior or release changes.
 
@@ -32,7 +32,7 @@ npm --prefix browser test
 git diff --check
 ```
 
-CFFormat checked 38 files successfully. The earlier unchanged browser Vitest run passed **28/28** in eight files; no browser source or assets changed. The unchanged browser development dependency tree has npm audit advisories for Vite (high), Vitest (moderate) and `@vitest/mocker` (moderate); no unrelated dependency upgrades were made. This does not assess production exploitability.
+CFFormat checked 44 files successfully. The earlier unchanged browser Vitest run passed **28/28** in eight files; no browser source or assets changed. The unchanged browser development dependency tree has npm audit advisories for Vite (high), Vitest (moderate) and `@vitest/mocker` (moderate); no unrelated dependency upgrades were made. This does not assess production exploitability.
 
 Lucee 6, the complete hosted matrix, browser UI matrices, crash/recovery loops, live database polling, supported vendor pool adapters, production profiling, real provider delivery/indexing and consumer adoption remain unverified here. Publication, deployment, hosted workflow dispatch, alert/uptime configuration, external messaging and automation changes were not performed. Consumer and original module checkouts remain unchanged. Owned test servers and the receiver are stopped after verification.
 
@@ -48,4 +48,15 @@ The earlier discrepancy is now diagnosed and fixed. The local Lucee 5.4.8.2 conf
 
 Default error timestamps now use the unadjusted JVM millisecond clock, consistent with the other telemetry. Explicit date arguments preserve their supplied instant. ISO and Unix values still derive from one truncated epoch second. A new deterministic boundary regression and the frozen-clock capture/post-metadata regression both failed before the implementation fix and pass afterward; the existing strict current-time bounds remain intact.
 
-The same local probe observed **12 future timestamps in 150 samples before** and **zero in 150 after**, with the +72 ms engine offset still present. Evidence: `/tmp/sentry-timestamp-clock-before.json`, `/tmp/sentry-timestamp-offset-before.json`, `/tmp/sentry-timestamp-clock-after.json`, and `/tmp/sentry-timestamp-regressions-before.json`. No engine time-server settings or system clocks were changed. Probe templates were removed. The four timestamp specs and the complete 78-spec module suite pass on each of the three local engines listed above.
+The same local probe observed **12 future timestamps in 150 samples before** and **zero in 150 after**, with the +72 ms engine offset still present. Evidence: `/tmp/sentry-timestamp-clock-before.json`, `/tmp/sentry-timestamp-offset-before.json`, `/tmp/sentry-timestamp-clock-after.json`, and `/tmp/sentry-timestamp-regressions-before.json`. No engine time-server settings or system clocks were changed. Probe templates were removed. The timestamp correction passed its four timestamp specs and the then-complete 78-spec suite on all three local engines. The expanded final suite above includes those regressions.
+
+
+## Request saturation, dependency outcomes and queue worker health
+
+The expanded suite adds **17 focused specs**, for **95/95 on each engine**, with zero failures, errors or skips. New coverage exercises bounded active-request tracking, monotonic ages, explicit once-only timeout completion, cross-thread completion, trace-disabled request lifecycle, the terminal exception path with no postProcess, retained error trace correlation, disabled collection, fixed dependency classifications and retry/status/breaker fields, original return/exception preservation, callback-only duration, observation-failure cleanup, worker heartbeat/backlog snapshots, failed/unsupported-versus-zero sampling, and fixed executor labels.
+
+The optional database-health query compiles against the installed qb public API with PostgreSQL, MySQL and SQL Server grammars. Its predicates distinguish runnable/delayed unclaimed jobs, claimed/reserved jobs and expired leases. Query execution is stubbed at get(); no live database execution or lock/lease behavior is qualified. The cbq pool contract reads configured quantity and the executor's supported activity statistics. A real local ColdBox Executor wrapping a JVM fixed pool verifies idle activity as zero; unsupported executor capability leaves activity absent. This does not prove live worker heartbeats or production workload behavior.
+
+Independent subagent review found three bugs in the first implementation: annotation errors could skip dependency span completion; a ColdBox exception skipped postProcess and leaked an active request observation; and cbq execution capacity was mislabeled as active work. All three are fixed and covered by regressions. The capacity/activity and unsupported-executor regressions failed before the adapter fix (15 passed, 2 failed in /tmp/sentry-worker-capacity-regression-before.json). The reviewer rechecked the revised implementation and documentation and found no further actionable bug or CFML/BoxLang/Adobe compatibility issue. Dependency duration also excludes classifier/setup/export work.
+
+All collectors remain opt-in with bounded fixed labels. No scheduler or worker heartbeat is fabricated. Request executor details, real worker heartbeats and provider retry/exhaustion totals require supported consumer snapshots. No application adoption, dependency/package changes, browser changes, hosted checks, external provider changes, push, publication or deployment were performed. The original module and consumer worktrees remain unchanged; owned local test processes were stopped after verification.
