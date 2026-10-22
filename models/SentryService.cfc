@@ -57,6 +57,9 @@ component accessors=true singleton threadSafe {
 	// Additional tags
 	property name="tags";
 
+	// Use the same unadjusted JVM clock as envelope and observability timestamps.
+	variables.timestampClock = createObject( "java", "java.lang.System" );
+
 
 
 	/**
@@ -1366,8 +1369,10 @@ component accessors=true singleton threadSafe {
 	/**
 	 * Get matching UTC values from one truncated epoch second on every engine.
 	 */
-	private struct function getTimeVars( date time = now() ){
-		var unixSeconds = int( time.getTime() / 1000 );
+	private struct function getTimeVars( date time ){
+		// Lucee now() can apply a configured time-server offset to the JVM clock.
+		var millis      = isNull( arguments.time ) ? variables.timestampClock.currentTimeMillis() : arguments.time.getTime();
+		var unixSeconds = int( millis / 1000 );
 		var timeVars    = {
 			"unix" : toString( unixSeconds ),
 			"iso"  : createObject( "java", "java.time.Instant" )

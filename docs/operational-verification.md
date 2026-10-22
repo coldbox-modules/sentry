@@ -1,12 +1,12 @@
 # Local operational-observability verification — October 22, 2026
 
-After subagent review and fixes, the final module harness passed **77/77** on each local engine, with zero failures, errors or skips:
+After subagent review and the timestamp clock correction, the final module harness passed **78/78** on each local engine, with zero failures, errors or skips:
 
 | Engine | JVM / servlet runtime | Evidence |
 | --- | --- | --- |
-| Lucee 5.4.8.2 | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-review-final-lucee5.json` |
-| BoxLang 1.18.0+66, reported by servlet startup | Temurin 21.0.10+7, Runwar 6.1.8 | `/tmp/sentry-review-final-boxlang.json` |
-| Adobe ColdFusion 2023 update 25 (`2023,0,25,330977`) | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-review-final-adobe.json` |
+| Lucee 5.4.8.2 | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-timestamp-final-lucee5.json` |
+| BoxLang 1.18.0+66, reported by servlet startup | Temurin 21.0.10+7, Runwar 6.1.8 | `/tmp/sentry-timestamp-final-boxlang.json` |
+| Adobe ColdFusion 2023 update 25 (`2023,0,25,330977`) | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-timestamp-final-adobe.json` |
 
 The BoxLang engine package is labeled `1.18.6+62`; its startup reports the runtime version above. Do not infer the running engine version from the package label or the legacy TestBox reporter. The local CommandBox initial-install hook failed before boot with missing `CFENGINE` metadata; the owned engine then used the existing compatible `bx-compat-cfml`/`bx-esapi` runtime modules and explicit Jakarta Runwar 6.1.8. These are local harness setup details, not qualified fresh-install behavior or release changes.
 
@@ -42,4 +42,10 @@ The [audit and adoption sequence](observability-upstream-audit.md) records owner
 
 The independent review found six bugs, each reproduced by a failing regression against the initial commit: case-alias phase merging, exact queue names overwriting one another, workflow completion skipped after an earlier cleanup failure, mutable/foreign timing tokens bypassing bounds, trailing newlines accepted by the phase-name regex, and exporter work included in queue processing duration. All six are fixed. The reviewer rechecked the implementation and the BoxLang exact-name / Adobe null-array follow-ups and found no remaining actionable issue. `OperationalReviewSpec` is included in the normal and telemetry runners. Adobe also required a nonempty HTTP reset body in the receipt test fixture.
 
-One earlier combined Lucee run failed two unchanged current-time upper-bound assertions by one second (`/tmp/sentry-review-lucee5-clock-bound-failure.json`). The isolated timestamp suite passed 3/3, and the complete rerun passed 77/77 without timestamp-source edits. The transient boundary discrepancy is retained as a verification limitation rather than attributed to these changes.
+## Timestamp clock correction
+
+The earlier discrepancy is now diagnosed and fixed. The local Lucee 5.4.8.2 configuration reports a time-server offset of **+72 ms**. Its `now()` implementation constructs a `DateTimeImpl` with that offset applied (confirmed from the installed runtime bytecode). Sentry's default error timestamp used `now()`, while its transport, traces and test bounds used the JVM clock. At JVM epoch millisecond `1792707331943`, adding 72 ms crosses into Unix second `1792707332` while the JVM remains in second `1792707331`.
+
+Default error timestamps now use the unadjusted JVM millisecond clock, consistent with the other telemetry. Explicit date arguments preserve their supplied instant. ISO and Unix values still derive from one truncated epoch second. A new deterministic boundary regression and the frozen-clock capture/post-metadata regression both failed before the implementation fix and pass afterward; the existing strict current-time bounds remain intact.
+
+The same local probe observed **12 future timestamps in 150 samples before** and **zero in 150 after**, with the +72 ms engine offset still present. Evidence: `/tmp/sentry-timestamp-clock-before.json`, `/tmp/sentry-timestamp-offset-before.json`, `/tmp/sentry-timestamp-clock-after.json`, and `/tmp/sentry-timestamp-regressions-before.json`. No engine time-server settings or system clocks were changed. Probe templates were removed. The four timestamp specs and the complete 78-spec module suite pass on each of the three local engines listed above.
