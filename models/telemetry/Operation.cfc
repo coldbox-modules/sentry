@@ -71,8 +71,16 @@ component {
 			if ( arguments.state.keyExists( "previous" ) ) {
 				variables.telemetry.setScope( arguments.state.previous );
 			}
+		} catch ( any unavailable ) {
+		}
+		try {
 			if ( arguments.state.keyExists( "span" ) ) {
 				arguments.state.span.setAttribute( "workflow.outcome", arguments.outcome );
+			}
+		} catch ( any unavailable ) {
+		}
+		try {
+			if ( arguments.state.keyExists( "span" ) ) {
 				arguments.state.span.finish(
 					arguments.outcome == "failed" ? "internal_error" : (
 						arguments.outcome == "timeout" ? "deadline_exceeded" : "ok"

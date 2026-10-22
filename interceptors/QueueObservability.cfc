@@ -234,7 +234,8 @@ component {
 			if ( isNull( attempt ) ) {
 				return;
 			}
-			var status = arguments.interceptData.status;
+			var status     = arguments.interceptData.status;
+			var finishedAt = variables.sentry.getObservability().timestamp();
 			attempt.span.setAttribute( "messaging.message.released", status == "released" );
 			if ( attempt.span.finish( status == "released" ? "ok" : status ) ) {
 				// Close the root before best-effort metrics; a failed observer cannot strand it.
@@ -252,7 +253,7 @@ component {
 					if ( attempt.started > 0 ) {
 						variables.sentry.distribution(
 							"queue.processing.duration",
-							max( 0, ( telemetry.timestamp() - attempt.started ) * 1000 ),
+							max( 0, ( finishedAt - attempt.started ) * 1000 ),
 							labels,
 							"millisecond"
 						);

@@ -3,7 +3,9 @@ component extends="testbox.system.BaseSpec" {
 	function run(){
 		describe( "Envelope delivery freshness", function(){
 			afterEach( function(){
-				cfhttp( url = "http://127.0.0.1:60320/reset", method = "post" );
+				cfhttp( url = "http://127.0.0.1:60320/reset", method = "post" ) {
+					cfhttpparam( type = "body", value = "{}" );
+				}
 			} );
 			it( "keeps receipt collection opt-in", function(){
 				var service = new sentry.models.SentryService( { DSN : "http://public@127.0.0.1:60320/1" } );

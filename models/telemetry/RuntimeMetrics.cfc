@@ -17,10 +17,10 @@ component {
 		} catch ( any unavailable ) {
 		}
 		try {
-			samples[ "jvm.threads" ] = {
-				"value" : factory.getThreadMXBean().getThreadCount(),
-				"unit"  : "none"
-			};
+			var threads = readAttribute( "java.lang:type=Threading", "ThreadCount" );
+			if ( isNumeric( threads ) && threads >= 0 ) {
+				samples[ "jvm.threads" ] = { "value" : threads, "unit" : "none" };
+			}
 		} catch ( any unavailable ) {
 		}
 		try {
@@ -110,7 +110,7 @@ component {
 			javacast( "int", arguments.types.len() )
 		);
 		for ( var i = 1; i <= arguments.types.len(); i++ ) {
-			if ( !isNull( arguments.args[ i ] ) ) {
+			if ( arrayIsDefined( arguments.args, i ) && !isNull( arguments.args[ i ] ) ) {
 				reflectArray.set(
 					nativeArgs,
 					javacast( "int", i - 1 ),

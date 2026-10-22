@@ -31,7 +31,7 @@ component {
 				for ( var key in definitions ) {
 					var names = definitions[ key ].getQueue();
 					for ( var name in isArray( names ) ? names : [ names ] ) {
-						queues[ name ] = { "depth" : 0, "oldest" : 0 };
+						queues[ queueKey( name ) ] = { "name" : name, "stats" : { "depth" : 0, "oldest" : 0 } };
 					}
 				}
 				var query = variables.queryFactory();
@@ -46,35 +46,42 @@ component {
 					.groupBy( "queue" )
 					.get();
 				for ( var row in rows ) {
-					queues[ row.queue ] = row;
+					queues[ queueKey( row.queue ) ] = { "name" : row.queue, "stats" : row };
 				}
-				for ( var name in variables.observed ) {
-					if ( !queues.keyExists( name ) ) {
-						queues[ name ] = { "depth" : 0, "oldest" : 0 };
+				for ( var key in variables.observed ) {
+					if ( !queues.keyExists( key ) ) {
+						queues[ key ] = {
+							"name"  : variables.observed[ key ],
+							"stats" : { "depth" : 0, "oldest" : 0 }
+						};
 					}
 				}
 				var now                             = createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000;
 				var emitted                         = 0;
 				variables.diagnostics.omittedQueues = 0;
-				var ordered                         = structKeyArray( queues );
+				var ordered                         = [];
+				for ( var key in queues ) {
+					ordered.append( queues[ key ].name );
+				}
 				arraySort( ordered, "text" );
 				for ( var name in ordered ) {
+					var key = queueKey( name );
 					if (
 						emitted >= variables.maxQueues || (
-							!variables.observed.keyExists( name ) && structCount( variables.observed ) >= variables.maxQueues
+							!variables.observed.keyExists( key ) && structCount( variables.observed ) >= variables.maxQueues
 						)
 					) {
 						variables.diagnostics.omittedQueues++;
 						continue;
 					}
-					var stats = queues[ name ];
+					var stats = queues[ key ].stats;
 					variables.telemetry.captureQueueMetrics(
 						name,
 						stats.depth,
 						stats.depth ? max( 0, now - stats.oldest ) : 0
 					);
 					if ( structCount( variables.observed ) < variables.maxQueues ) {
-						variables.observed[ name ] = true;
+						variables.observed[ key ] = name;
 					}
 					emitted++;
 				}
@@ -87,6 +94,10 @@ component {
 			}
 		}
 		return false;
+	}
+	/** Hash exact labels internally: CFML structs and BoxLang Java-map adapters fold string key case. */
+	private function queueKey( required string name ){
+		return hash( arguments.name, "SHA-256", "UTF-8" );
 	}
 	function getDiagnostics(){
 		lock name="sentry-queue-sampler-#variables.id#" type="exclusive" timeout="2" {
