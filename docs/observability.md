@@ -1,6 +1,6 @@
 # Observability and feedback for CFML and BoxLang
 
-All new integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Version 3.0.0-alpha.1 is a preview requiring the accompanying qb/cbq hooks; it is not a published stable release.
+All integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Use qb/cbq versions with the documented hooks (see the [upstream audit](observability-upstream-audit.md) for the inspected dependency versions). The operational additions described below remain unpublished until released.
 
 ## Server setup
 
@@ -126,3 +126,9 @@ Browser profiling needs a separate browser support/Document-Policy and overhead 
 See verification.md for commands, exact versions, provider proof and deferred checks.
 
 Lucee 6 global listener cache classification requires the query result metadata to include cached (for queryExecute, an existing result option). Missing cache metadata is marked db.cache_status=unknown. Query-of-queries bypassed global listeners in 6.2.8.20; instrument those explicitly with withQuerySpan. Existing error handlers retain their handling behavior; absent one, the adapter throws the original query exception. See the [Lucee listener contract](https://docs.lucee.org/recipes/query-listener.html).
+
+## Operational setup
+
+See [operational-observability.md](operational-observability.md) for delivery freshness, bounded request timings, workflow outcomes, optional queue/pool adapters, JVM CPU/GC samples and alert/uptime/cron recipes. See [observability-upstream-audit.md](observability-upstream-audit.md) for the CommuniArts ownership audit and release/adoption boundaries.
+
+The [local verification report](operational-verification.md) separates focused runtime/test evidence from release, consumer and production checks.

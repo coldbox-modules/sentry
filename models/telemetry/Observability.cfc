@@ -5,6 +5,7 @@ component {
 		variables[ "owner" ]    = arguments.owner;
 		variables[ "settings" ] = arguments.settings;
 		variables.settings.append( defaults(), false );
+		variables.delivery                = new DeliveryDiagnostics( variables.settings.maxPendingEnvelopes );
 		variables[ "scope" ]              = createObject( "java", "java.lang.ThreadLocal" ).init();
 		variables[ "completionFailures" ] = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init(
 			0
@@ -35,9 +36,12 @@ component {
 			"maxSpans"                       : 1000,
 			"transportTimeout"               : 2000,
 			"maxPendingEnvelopes"            : 64,
+			"enableDeliveryDiagnostics"      : false,
 			"enableRequestTracing"           : false,
 			"queryAdapter"                   : "none",
 			"enableQueueTracing"             : false,
+			"enableQueueJobMetrics"          : false,
+			"queueMetricDestinations"        : [],
 			"enableLogs"                     : false,
 			"enableStructuredLogBoxAppender" : false,
 			"logMessageMode"                 : "sanitized",
@@ -50,7 +54,11 @@ component {
 			"browser"                        : {},
 			"trustIncomingTrace"             : false,
 			"requestFilter"                  : "",
-			"attributeFilter"                : ""
+			"attributeFilter"                : "",
+			"requestTimingNames"             : [],
+			"operationNames"                 : [],
+			"providerNames"                  : [],
+			"databasePoolNames"              : []
 		};
 	}
 	function registerBoxLangQueries( required string applicationName, string databaseSystem = "other" ){
@@ -376,6 +384,86 @@ component {
 		};
 	}
 	function sendSignal(
+		required string type,
+		required struct payload,
+		required string category,
+		array attachments = [],
+		boolean wait      = false
+	){
+		var receipt = sendSignalReceipt( argumentCollection = arguments );
+		if ( variables.settings.enableDeliveryDiagnostics ) {
+			try {
+				variables.delivery.record( receipt );
+			} catch ( any unavailable ) {
+				variables.completionFailures.incrementAndGet();
+			}
+		}
+		return receipt;
+	}
+	function deliveryDiagnostics(){
+		var result          = variables.delivery.snapshot();
+		result[ "enabled" ] = variables.settings.enableDeliveryDiagnostics;
+		return result;
+	}
+	function newRequestTimings(){
+		return new RequestTimings( this, variables.settings.requestTimingNames );
+	}
+	/** Consumer supplies a supported pool adapter. Never inspect engine internals or JDBC credentials. */
+	function captureDatabasePool( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.settings.databasePoolNames.find( arguments.name ) ) {
+			return false;
+		}
+		try {
+			var values = arguments.sample();
+			var fields = {
+				"active"   : "db.pool.active",
+				"idle"     : "db.pool.idle",
+				"max"      : "db.pool.max",
+				"waiters"  : "db.pool.waiters",
+				"timeouts" : "db.pool.timeouts.total"
+			};
+			for ( var field in fields ) {
+				if ( values.keyExists( field ) && isNumeric( values[ field ] ) && values[ field ] >= 0 ) {
+					gauge(
+						fields[ field ],
+						values[ field ],
+						{ "db.pool.name" : arguments.name }
+					);
+				}
+			}
+			if (
+				values.keyExists( "active" ) && values.keyExists( "max" ) && isNumeric( values.active ) && isNumeric(
+					values.max
+				) && values.max > 0 && values.active >= 0 && values.active <= values.max
+			) {
+				gauge(
+					"db.pool.utilization",
+					values.active / values.max,
+					{ "db.pool.name" : arguments.name },
+					"ratio"
+				);
+			}
+			return true;
+		} catch ( any unavailable ) {
+			return false;
+		}
+	}
+	function withOperation(
+		required string name,
+		required function callback,
+		string provider = "",
+		any classify    = ""
+	){
+		if (
+			!variables.settings.operationNames.find( arguments.name ) || (
+				len( arguments.provider ) && !variables.settings.providerNames.find( arguments.provider )
+			)
+		) {
+			return arguments.callback();
+		}
+		return new Operation( this ).run( argumentCollection = arguments );
+	}
+	private function sendSignalReceipt(
 		required string type,
 		required struct payload,
 		required string category,
@@ -722,14 +810,10 @@ component {
 		);
 	}
 	function captureRuntimeGauges(){
-		var memory = createObject( "java", "java.lang.management.ManagementFactory" )
-			.getMemoryMXBean()
-			.getHeapMemoryUsage();
-		gauge( "jvm.heap.used", memory.getUsed(), {}, "byte" );
-		gauge(
-			"jvm.threads",
-			createObject( "java", "java.lang.management.ManagementFactory" ).getThreadMXBean().getThreadCount()
-		);
+		if ( !variables.settings.enableMetrics ) {
+			return {};
+		}
+		return new RuntimeMetrics( this ).capture();
 	}
 	function getBrowserConfig(){
 		var browser = variables.settings.browser;

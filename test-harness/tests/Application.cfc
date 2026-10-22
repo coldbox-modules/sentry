@@ -39,6 +39,11 @@ component {
 		this.mappings[ "/cbq" ] = cbqSource;
 	}
 	this.mappings[ "/dependencies" ] = this.mappings[ "/sentry" ] & "/modules";
+	qbSource                         = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QB_SOURCE" );
+	if ( !isNull( qbSource ) && len( qbSource ) ) {
+		this.mappings[ "/qb" ]          = qbSource;
+		this.mappings[ "/cbpaginator" ] = qbSource & "/modules/cbpaginator";
+	}
 
 
 	/**

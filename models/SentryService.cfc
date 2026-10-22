@@ -287,6 +287,18 @@ component accessors=true singleton threadSafe {
 	function captureRuntimeGauges(){
 		return variables.observability.captureRuntimeGauges( argumentCollection = arguments );
 	}
+	function deliveryDiagnostics(){
+		return variables.observability.deliveryDiagnostics();
+	}
+	function captureDatabasePool(){
+		return variables.observability.captureDatabasePool( argumentCollection = arguments );
+	}
+	function newRequestTimings(){
+		return variables.observability.newRequestTimings();
+	}
+	function withOperation(){
+		return variables.observability.withOperation( argumentCollection = arguments );
+	}
 	function getInstrumentedCache( string name = "default" ){
 		return new telemetry.InstrumentedCache(
 			variables.wirebox.getInstance( "cachebox:" & arguments.name ),
@@ -1209,10 +1221,14 @@ component accessors=true singleton threadSafe {
 
 		var traceContext = variables.observability.getTraceContext();
 		if ( !traceContext.isEmpty() ) {
-			if ( !arguments.captureStruct.keyExists( "contexts" ) ) {
-				arguments.captureStruct.contexts = {};
-			}
-			arguments.captureStruct.contexts.trace = traceContext;
+			// Case-insensitive structs can preserve an earlier dot-assigned uppercase key.
+			var captureContexts = arguments.captureStruct.keyExists( "contexts" ) ? arguments.captureStruct[
+				"contexts"
+			] : {};
+			arguments.captureStruct.delete( "contexts" );
+			captureContexts.delete( "trace" );
+			captureContexts[ "trace" ]            = traceContext;
+			arguments.captureStruct[ "contexts" ] = captureContexts;
 		}
 		// serialize data
 		jsonCapture = serializeJSON( arguments.captureStruct );
