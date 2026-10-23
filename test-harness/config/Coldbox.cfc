@@ -94,12 +94,29 @@
 			}
 		};
 
+		if ( len( getSystemSetting( "SENTRY_QUEUE_HEALTH_DB", "" ) ) ) {
+			coldbox.modulesExternalLocation.append( "/queueHealthModules" );
+			modules.include.append( "qb" );
+			modules.include.append( "str" );
+			modules.include.append( "cbq" );
+			// Synthetic failures must never use a developer's external SENTRY_DSN.
+			moduleSettings.sentry.DSN = "http://public@127.0.0.1:60320/1";
+			moduleSettings.sentry.enableLogBoxAppender = false;
+			moduleSettings.sentry.enableExceptionLogging = false;
+			moduleSettings[ "qb" ] = { defaultGrammar : "PostgresGrammar@qb", defaultOptions : { datasource : "sentryQueueHealth" } };
+			moduleSettings[ "cbq" ] = { configPath : "tests.resources.QueueHealthConfig", registerWorkers : false };
+		}
+
 	}
 
 	/**
 	 * Load the Module you are testing
 	 */
 	function afterAspectsLoad( event, interceptData, rc, prc ){
+		if ( len( getSystemSetting( "SENTRY_QUEUE_HEALTH_DB", "" ) ) ) {
+			controller.getWireBox().getBinder().map( "QueueHealthState" ).to( "tests.resources.QueueHealthState" ).asSingleton();
+			controller.getWireBox().getBinder().map( "QueueHealthJob" ).to( "tests.resources.QueueHealthJob" );
+		}
 		controller.getModuleService()
 			.registerAndActivateModule(
 				moduleName 		= request.MODULE_NAME,

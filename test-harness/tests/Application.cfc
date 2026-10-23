@@ -44,6 +44,39 @@ component {
 		this.mappings[ "/qb" ]          = qbSource;
 		this.mappings[ "/cbpaginator" ] = qbSource & "/modules/cbpaginator";
 	}
+	// Explicit local-only integration fixture. The dedicated database must already exist.
+	queueHealthDatabase = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QUEUE_HEALTH_DB" );
+	if ( !isNull( queueHealthDatabase ) && len( queueHealthDatabase ) ) {
+		if (
+			!reFind( "^sentry_queue_health_[a-z0-9_]+", queueHealthDatabase ) || reFind(
+				"[^a-z0-9_]",
+				queueHealthDatabase
+			)
+		)
+			throw( type = "Sentry.UnsafeIntegrationDatabase" );
+		this.mappings[ "/queueHealthModules" ]  = rootPath & "modules";
+		this.datasources[ "sentryQueueHealth" ] = {
+			"class"            : "org.postgresql.Driver",
+			"connectionString" : "jdbc:postgresql://127.0.0.1:5432/" & queueHealthDatabase,
+			"username"         : "postgres",
+			"password"         : "",
+			"connectionLimit"  : 6
+		};
+		if ( structKeyExists( server, "lucee" ) ) {
+			this.datasources.sentryQueueHealth[ "bundleName" ]    = "org.postgresql.jdbc";
+			this.datasources.sentryQueueHealth[ "bundleVersion" ] = "42.6.0";
+		} else if ( !structKeyExists( server, "boxlang" ) ) {
+			this.datasources[ "sentryQueueHealth" ] = {
+				"driver"   : "postgresql",
+				"host"     : "127.0.0.1",
+				"port"     : 5432,
+				"database" : queueHealthDatabase,
+				"username" : "postgres",
+				"password" : ""
+			};
+		}
+	}
+
 
 
 	/**
