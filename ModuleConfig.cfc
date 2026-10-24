@@ -96,7 +96,8 @@ component {
 			"enableDeliveryDiagnostics"       : false,
 			// Query tracing: none/qb/lucee/auto/boxlang, callback(context), or mapping implementing IQueryAdapter.configure(context).
 			"queryAdapter"                    : "none",
-			// Manually allowed request-phase names; automatic timing also supplies handler/render.
+			// Optional initial phase names/header order; measure()/begin() also accept ad hoc names without configuration.
+			// At most 32 distinct HTTP-safe names per instance. Automatic timing supplies handler/render.
 			"requestTimingNames"              : [],
 			// Time preEvent/postEvent and preRender/postRender automatically, preserving manual phase APIs.
 			"enableAutomaticRequestTimings"   : false,

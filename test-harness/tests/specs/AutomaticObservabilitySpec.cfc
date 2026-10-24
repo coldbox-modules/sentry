@@ -31,6 +31,31 @@ component extends="testbox.system.BaseSpec" {
 				expect( result.activeWorkers ).toBe( 2 );
 			} );
 
+			it( "records an ad hoc manual phase on the automatic request timing instance", function(){
+				var service   = makeService( { enableAutomaticRequestTimings : true } );
+				var telemetry = prepareMock( service.getObservability() );
+				telemetry.$( "distribution" );
+				var context  = eventContext();
+				var observer = createMock( "sentry.interceptors.Observability" ).$property(
+					"sentry",
+					"variables",
+					service
+				);
+				observer.onRequestCapture( context, {} );
+				var timing = service.getRequestTimings();
+				expect(
+					timing.measure( "loadDashboard", function(){
+						return 42;
+					} )
+				).toBe( 42 );
+				expect( timing.snapshot().loadDashboard.count ).toBe( 1 );
+				var calls = telemetry.$callLog( "distribution" ).distribution;
+				expect( calls.len() ).toBe( 1 );
+				expect( calls[ 1 ][ 1 ] ).toBe( "http.server.phase.duration" );
+				expect( calls[ 1 ][ 3 ].phase ).toBe( "loadDashboard" );
+				observer.postProcess( context, {} );
+				expect( telemetry.getScope() ).toBeEmpty();
+			} );
 			it( "ignores invalid manual phase names in both timing APIs", function(){
 				var service = makeService( {
 					requestTimingNames : [

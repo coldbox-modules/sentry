@@ -7,8 +7,10 @@ component extends="testbox.system.BaseSpec" {
 				timing.measure( "render", function(){
 					return 1;
 				} );
-				expect( timing.begin( "Render" ) ).toBeEmpty();
-				expect( timing.snapshot().render.count ).toBe( 1 );
+				timing.measure( "Render", function(){
+					return 2;
+				} );
+				expect( timing.snapshot().render.count ).toBe( 2 );
 				expect( listLen( timing.toServerTiming(), "," ) ).toBe( 1 );
 			} );
 			it( "rejects trailing LF and CRLF in configured HTTP timing names", function(){

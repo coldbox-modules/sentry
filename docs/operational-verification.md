@@ -1,5 +1,15 @@
 # Local operational-observability verification — October 24, 2026
 
+## Ad hoc timing follow-up
+
+Manual `measure(name,callback)` and `begin(name)` now register valid phase names on first use without `requestTimingNames` configuration. The setting remains an optional initial name/header order list. Case variants record under the first spelling. Existing 32-name/64-sample limits, token ownership, name validation and original callback outcomes are preserved.
+
+The updated 43-spec focused bundle reproduced the previous restriction (39 passed, two failures, two errors in `/tmp/sentry-adhoc-before.json`). After the fix, the complete ordinary harness passed **123/123 on Lucee 5.4.8.2, BoxLang 1.18.0+66 and Adobe 2023 update 25**, zero failures, errors or skips. Evidence: `/tmp/sentry-adhoc-final-lucee5.json`, `/tmp/sentry-adhoc-final-boxlang.json`, `/tmp/sentry-adhoc-final-adobe2023.json`. New coverage checks ad hoc manual and shared automatic instances, once-only tokens, case canonicalization, emitted phase metrics, limits, invalid names and preserved callback returns/exceptions. Independent source review found no remaining actionable bug or CFML/BoxLang/older-Adobe compatibility issue. Formatting checked 63 files and whitespace checks passed.
+
+These follow-up runs use the prepared local runtimes with optional qb compilation contracts enabled. The ten opt-in live PostgreSQL/cbq cases were not rerun for this timing-only change; their earlier 130/130 evidence below remains historical. Browser assets are unchanged. Hosted CI evidence is recorded separately on draft PR #56.
+
+## Earlier automatic-collector verification
+
 The configuration-driven automatic collectors and dependency adapters passed the complete local suite: **130/130 on each engine, zero failures, errors or skips**. Manual APIs remain covered. Each run includes 25 automatic-configuration specs and 10 live PostgreSQL/cbq cases.
 
 | Engine | JVM / servlet runtime | Current raw evidence |

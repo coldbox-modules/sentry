@@ -11,17 +11,7 @@ component {
 		variables.emitMetrics = arguments.emitMetrics;
 		variables.names       = [];
 		for ( var name in arguments.names ) {
-			if (
-				!isNull( name ) && isSimpleValue( name ) && variables.names.len() < 32 && len( name ) > 0 && len(
-					name
-				) <= 48 &&
-				reFind( "^[a-zA-Z]", name ) && !reFind( "[^a-zA-Z0-9_]", name ) && !arrayFindNoCase(
-					variables.names,
-					name
-				)
-			) {
-				variables.names.append( name );
-			}
+			if ( !isNull( name ) && isSimpleValue( name ) ) registerName( toString( name ) );
 		}
 		variables.maxSamples = max( 0, min( 64, arguments.maxSamples ) );
 		variables.samples    = 0;
@@ -30,17 +20,34 @@ component {
 		variables.clock      = createObject( "java", "java.lang.System" );
 		return this;
 	}
+	private function registerName( required string name ){
+		if (
+			!len( arguments.name ) || len( arguments.name ) > 48 || !reFind( "^[a-zA-Z]", arguments.name ) || reFind(
+				"[^a-zA-Z0-9_]",
+				arguments.name
+			)
+		)
+			return "";
+		// Use one spelling everywhere, including case-insensitive CFML snapshot structs.
+		var index = arrayFindNoCase( variables.names, arguments.name );
+		if ( index ) return variables.names[ index ];
+		if ( variables.names.len() >= 32 ) return "";
+		variables.names.append( arguments.name );
+		return arguments.name;
+	}
 	function begin( required string name ){
-		if ( !variables.names.find( arguments.name ) || variables.samples >= variables.maxSamples ) {
+		if ( variables.samples >= variables.maxSamples ) {
 			return {};
 		}
+		var phaseName = registerName( arguments.name );
+		if ( !len( phaseName ) ) return {};
 		variables.samples++;
 		var state = {
-			"name"    : arguments.name,
+			"name"    : phaseName,
 			"started" : variables.clock.nanoTime()
 		};
 		try {
-			state.span = variables.telemetry.startSpan( arguments.name, "app.phase" );
+			state.span = variables.telemetry.startSpan( phaseName, "app.phase" );
 		} catch ( any unavailable ) {
 		}
 		var token = { "id" : createUUID() };

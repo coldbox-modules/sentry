@@ -13,10 +13,8 @@ Local freshness does not prove provider retention. Independently query the lates
 ## Request phases and Server-Timing
 
 ```cfml
-// moduleSettings.sentry; empty by default
-requestTimingNames: [ "handler", "shared_props", "render" ]
-
 // Create once per eligible request and keep it in PRC, never on a singleton.
+// Names are registered when used; no requestTimingNames setting is required.
 prc.timings = sentry.newRequestTimings();
 result = prc.timings.measure( "shared_props", function(){ return buildSharedProps(); } );
 // Or begin(name) / finish(token, status="ok") around lifecycle hooks.
@@ -25,7 +23,9 @@ result = prc.timings.measure( "shared_props", function(){ return buildSharedProp
 event.setHTTPHeader( name="Server-Timing", value=prc.timings.toServerTiming() );
 ```
 
-This extracts the portable mechanism from CommuniArts' request timing service. Labels are restricted to 32 configured HTTP-safe ASCII names, 48 characters each; control characters are rejected. Names are deduplicated without regard to case, retaining the first configured spelling; callers must use that exact spelling, and other case variants are unobserved. There are at most 64 samples per instance. Durations use a monotonic clock. Tokens are opaque and belong to their creating instance; timing names, starts and span handles remain private. Foreign tokens and mutable extra token fields are ignored. Completion is atomic per token and telemetry failure preserves callback results/exceptions. `snapshot()` returns per-label duration in milliseconds and count. Child `app.phase` spans follow the current trace's sampling. Overlapping phases must not be summed. Instances are request-local; do not share an instance across parallel tasks. App-specific GET/route/authentication/Inertia eligibility, header publication, named phases, and root timing attributes stay in the app. No module interceptor emits a header automatically.
+`measure(name,callback)` and `begin(name)` register a phase on first use. No upfront allowlist is required. The optional `requestTimingNames` setting seeds names and their Server-Timing header order; it does not restrict later names. Names are deduplicated without regard to case and use the first spelling in spans, metrics, snapshots and headers. For example, `render` and `Render` both record under the first spelling.
+
+Each instance retains at most 32 distinct names and 64 samples. Existing name validation still applies: 1–48 ASCII letters/digits/underscores, beginning with a letter; control characters are rejected. Invalid names or exhausted limits skip observation while the callback still runs once with its original return value/exception. Choose stable names for code blocks instead of generating names from user data. Durations use a monotonic clock. Tokens are opaque and belong to their creating instance; timing names, starts and span handles remain private. Foreign tokens and mutable extra token fields are ignored. Completion is atomic per token and telemetry failure preserves callback results/exceptions. `snapshot()` returns per-label duration in milliseconds and count. Child `app.phase` spans follow the current trace's sampling. Overlapping phases must not be summed. Instances are request-local; do not share an instance across parallel tasks. App-specific GET/route/authentication/Inertia eligibility and root timing attributes stay in the app. Manual instances leave header publication to the caller; the automatic instance publishes only when `publishServerTiming` is enabled.
 
 ## Workflows and providers
 
@@ -274,4 +274,4 @@ Classification follows the manual withDependency contract. A failing classifier 
 
 With enableAutomaticRequestTimings, ColdBox preEvent/postEvent measure handler work and preRender/postRender measure rendering, using a shared request-local timing instance. These are framework boundaries, not individually classified business operations. Automatic finishes also emit http.server.phase.duration in milliseconds. Open phases are drained on exceptions and explicit endRequest, including early redirects; keep the Application onRequestEnd fallback. Nested events can overlap, so do not sum their durations as wall time. The optional Server-Timing header is only published when publishServerTiming is true and an optional serverTimingFilter(event) permits it; responses that already committed headers cannot receive it.
 
-Manual newRequestTimings()/measure() and withDependency()/withOperation() remain unchanged. sentry.getRequestTimings() returns the active automatic instance, or null outside an automatically timed request. Use distinct names for additional manual phases instead of timing the same automatic handler/render interval again.
+Manual newRequestTimings()/measure() and withDependency()/withOperation() remain available. sentry.getRequestTimings() returns the active automatic instance, or null outside an automatically timed request. Additional manual phases work without requestTimingNames configuration. Use distinct names instead of timing the same automatic handler/render interval again.

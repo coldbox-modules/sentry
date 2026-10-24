@@ -23,7 +23,6 @@ component extends="testbox.system.BaseSpec" {
 				var root = variables.service.startTransaction( "request" );
 				variables.telemetry.setScope( { "span" : root } );
 				var timing = variables.service.newRequestTimings();
-				expect( timing.begin( "unregistered" ) ).toBeEmpty();
 				expect( timing.begin( "bad,header" ) ).toBeEmpty();
 				var token = timing.begin( "handler" );
 				timing.finish( token );
@@ -50,6 +49,62 @@ component extends="testbox.system.BaseSpec" {
 				expect( timing.snapshot().handler.count ).toBe( 62 );
 				expect( timing.begin( "handler" ) ).toBeEmpty();
 				root.finish();
+			} );
+			it( "measures ad hoc phases without configuration and preserves callback outcomes", function(){
+				var timing = new sentry.models.telemetry.RequestTimings( {} );
+				var calls  = 0;
+				expect(
+					timing.measure( "loadDashboard", function(){
+						calls++;
+						return false;
+					} )
+				).toBeFalse();
+				expect( function(){
+					timing.measure( "loadDashboard", function(){
+						calls++;
+						throw( type = "DashboardFailure" );
+					} );
+				} ).toThrow( "DashboardFailure" );
+				var token = timing.begin( "fetchData" );
+				timing.finish( token );
+				timing.finish( token );
+				expect( calls ).toBe( 2 );
+				expect( timing.snapshot().loadDashboard.count ).toBe( 2 );
+				expect( timing.snapshot().fetchData.count ).toBe( 1 );
+				expect( timing.toServerTiming() ).toInclude( "loadDashboard;dur=" );
+			} );
+			it( "bounds ad hoc names and samples while still running unobserved callbacks", function(){
+				var timing = new sentry.models.telemetry.RequestTimings( {} );
+				for ( var i = 1; i <= 32; i++ ) timing.measure( "phase" & i, function(){
+						return 1;
+					} );
+				expect(
+					timing.measure( "overflow", function(){
+						return 42;
+					} )
+				).toBe( 42 );
+				expect( structCount( timing.snapshot() ) ).toBe( 32 );
+				expect( timing.snapshot() ).notToHaveKey( "overflow" );
+				for ( var i = 1; i <= 32; i++ ) timing.finish( timing.begin( "phase1" ) );
+				expect( timing.begin( "phase1" ) ).toBeEmpty();
+				expect( timing.snapshot().phase1.count ).toBe( 33 );
+				for (
+					var invalid in [
+						"",
+						"bad,header",
+						"bad" & chr( 10 ),
+						repeatString( "x", 49 )
+					]
+				) {
+					var fresh = new sentry.models.telemetry.RequestTimings( {} );
+					expect(
+						fresh.measure( invalid, function(){
+							return 42;
+						} )
+					).toBe( 42 );
+					expect( fresh.snapshot() ).toBeEmpty();
+					expect( fresh.toServerTiming() ).toBeEmpty();
+				}
 			} );
 			it( "retains timings and original exceptions when tracing is unavailable", function(){
 				var timing = new sentry.models.telemetry.RequestTimings(
