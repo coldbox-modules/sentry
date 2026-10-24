@@ -16,7 +16,7 @@ component {
 		return this;
 	}
 	function capture( required string name, required function sample ){
-		if ( !variables.names.contains( arguments.name ) ) return false;
+		if ( !variables.names.isAllowed( arguments.name ) ) return false;
 		var key = hash( arguments.name, "SHA-256" );
 		var now = createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000;
 		try {
@@ -77,7 +77,7 @@ component {
 		}
 	}
 	function diagnostics( required string name ){
-		if ( !variables.names.contains( arguments.name ) ) return {};
+		if ( !variables.names.isAllowed( arguments.name ) ) return {};
 		lock name="sentry-health-#variables.id#" type="exclusive" timeout="2" {
 			return duplicate(
 				variables.diagnostics[ hash( arguments.name, "SHA-256" ) ] ?: {

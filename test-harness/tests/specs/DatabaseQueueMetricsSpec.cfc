@@ -80,41 +80,43 @@ component extends="testbox.system.BaseSpec" {
 				expect( count ).toBe( 2 );
 				expect( sampler.getDiagnostics().omittedQueues ).toBe( 1 );
 			} );
-			it( "compiles the installed qb public API with dialect-aware identifiers", function(){
-				var source = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QB_SOURCE" );
-				if ( isNull( source ) || !len( source ) ) {
-					skip( "Set SENTRY_QB_SOURCE to run the installed qb contract" );
-					return;
-				}
-				for ( var dialect in [ "Postgres", "MySQL", "SqlServer" ] ) {
-					var grammar = createObject( "component", "qb.models.Grammars." & dialect & "Grammar" ).init();
-					var builder = prepareMock(
-						new qb.models.Query.QueryBuilder( grammar = grammar, paginationCollector = {} )
-					);
-					builder.$( "get", [] );
-					var sampler = new sentry.models.telemetry.DatabaseQueueMetrics(
-						{
-							captureQueueMetrics : function(){
+			it(
+				title = "compiles the installed qb public API with dialect-aware identifiers",
+				body  = function(){
+					for ( var dialect in [ "Postgres", "MySQL", "SqlServer" ] ) {
+						var grammar = createObject( "component", "qb.models.Grammars." & dialect & "Grammar" ).init();
+						var builder = prepareMock(
+							new qb.models.Query.QueryBuilder( grammar = grammar, paginationCollector = {} )
+						);
+						builder.$( "get", [] );
+						var sampler = new sentry.models.telemetry.DatabaseQueueMetrics(
+							{
+								captureQueueMetrics : function(){
+								}
+							},
+							{
+								getWorkerPoolDefinitions : function(){
+									return {};
+								}
+							},
+							function(){
+								return builder;
 							}
-						},
-						{
-							getWorkerPoolDefinitions : function(){
-								return {};
-							}
-						},
-						function(){
-							return builder;
+						);
+						expect( sampler.capture() ).toBeTrue();
+						var sql = builder.toSQL();
+						expect( sql ).toInclude( "min(" & grammar.wrapValue( "createdDate" ) & ") AS oldest" );
+						for ( var field in [ "completedDate", "failedDate", "reservedDate" ] ) {
+							expect( sql ).toInclude( grammar.wrapValue( field ) & " IS NULL" );
 						}
-					);
-					expect( sampler.capture() ).toBeTrue();
-					var sql = builder.toSQL();
-					expect( sql ).toInclude( "min(" & grammar.wrapValue( "createdDate" ) & ") AS oldest" );
-					for ( var field in [ "completedDate", "failedDate", "reservedDate" ] ) {
-						expect( sql ).toInclude( grammar.wrapValue( field ) & " IS NULL" );
+						expect( sql ).toInclude( "GROUP BY" );
 					}
-					expect( sql ).toInclude( "GROUP BY" );
+				},
+				skip = function(){
+					var source = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QB_SOURCE" );
+					return isNull( source ) || !len( source );
 				}
-			} );
+			);
 		} );
 	}
 

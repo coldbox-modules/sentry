@@ -98,41 +98,43 @@ component extends="testbox.system.BaseSpec" {
 				expect( measured ).toBe( 10 );
 			} );
 
-			it( "compiles database runnable, delayed and expired lease snapshots with qb grammars", function(){
-				var source = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QB_SOURCE" );
-				if ( isNull( source ) || !len( source ) ) {
-					skip( "Set SENTRY_QB_SOURCE for qb contracts" );
-					return;
+			it(
+				title = "compiles database runnable, delayed and expired lease snapshots with qb grammars",
+				body  = function(){
+					for ( var dialect in [ "Postgres", "MySQL", "SqlServer" ] ) {
+						var grammar = createObject( "component", "qb.models.Grammars." & dialect & "Grammar" ).init();
+						var builder = prepareMock(
+							new qb.models.Query.QueryBuilder( grammar = grammar, paginationCollector = {} )
+						);
+						builder.$(
+							"get",
+							[
+								{
+									runnable          : 2,
+									delayed           : 3,
+									reserved          : 1,
+									staleReservations : 1
+								}
+							]
+						);
+						var adapter = new sentry.models.telemetry.DatabaseQueueHealth( function(){
+							return builder;
+						} );
+						var result = adapter.snapshot( "PRIVATE-queue" );
+						expect( result.runnable ).toBe( 2 );
+						var sql = builder.toSQL();
+						expect( sql ).toInclude( grammar.wrapValue( "reservedBy" ) );
+						expect( sql ).toInclude( grammar.wrapValue( "availableDate" ) );
+						expect( sql ).toInclude( "staleReservations" );
+						expect( sql ).notToInclude( "PRIVATE-queue" );
+						expect( builder.getBindings().len() ).toBe( 4 );
+					}
+				},
+				skip = function(){
+					var source = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QB_SOURCE" );
+					return isNull( source ) || !len( source );
 				}
-				for ( var dialect in [ "Postgres", "MySQL", "SqlServer" ] ) {
-					var grammar = createObject( "component", "qb.models.Grammars." & dialect & "Grammar" ).init();
-					var builder = prepareMock(
-						new qb.models.Query.QueryBuilder( grammar = grammar, paginationCollector = {} )
-					);
-					builder.$(
-						"get",
-						[
-							{
-								runnable          : 2,
-								delayed           : 3,
-								reserved          : 1,
-								staleReservations : 1
-							}
-						]
-					);
-					var adapter = new sentry.models.telemetry.DatabaseQueueHealth( function(){
-						return builder;
-					} );
-					var result = adapter.snapshot( "PRIVATE-queue" );
-					expect( result.runnable ).toBe( 2 );
-					var sql = builder.toSQL();
-					expect( sql ).toInclude( grammar.wrapValue( "reservedBy" ) );
-					expect( sql ).toInclude( grammar.wrapValue( "availableDate" ) );
-					expect( sql ).toInclude( "staleReservations" );
-					expect( sql ).notToInclude( "PRIVATE-queue" );
-					expect( builder.getBindings().len() ).toBe( 4 );
-				}
-			} );
+			);
 
 			it( "counts active requests, bounds retention and accepts completion once", function(){
 				var first  = variables.service.beginRequestObservation();
@@ -489,8 +491,11 @@ component extends="testbox.system.BaseSpec" {
 							}
 						)
 					).toBeTrue();
-					var calls = telemetry.$callLog( "gauge" ).gauge;
-					expect( calls.len() ).toBe( 3 );
+					var calls            = telemetry.$callLog( "gauge" ).gauge;
+					// ColdBox 6 lacks the advertised activity capability; absence must remain absence.
+					var stats            = executor.getStats();
+					var supportsActivity = stats.keyExists( "features" ) && stats.features.keyExists( "taskMethods" ) && stats.features.taskMethods;
+					expect( calls.len() ).toBe( supportsActivity ? 3 : 2 );
 					for ( var call in calls ) {
 						if ( call[ 1 ] == "queue.executions.active" ) expect( call[ 2 ] ).toBe( 0 );
 					}

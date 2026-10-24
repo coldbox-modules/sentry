@@ -13,7 +13,7 @@ component {
 		}
 		return this;
 	}
-	function contains( required string name ){
+	function isAllowed( required string name ){
 		return variables.names.find( arguments.name ) > 0;
 	}
 

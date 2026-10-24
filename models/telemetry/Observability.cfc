@@ -237,7 +237,7 @@ component {
 			)
 				continue;
 			if (
-				!new MetricLabels( [ rule.name ] ).contains( rule.name ) || !len( rule.mapping ) || reFind(
+				!new MetricLabels( [ rule.name ] ).isAllowed( rule.name ) || !len( rule.mapping ) || reFind(
 					"[^A-Za-z0-9_.@:/-]",
 					rule.mapping
 				)
@@ -272,7 +272,7 @@ component {
 		for ( var i = 1; i <= min( 32, arguments.definitions.len() ); i++ ) {
 			var definition = arguments.definitions[ i ];
 			if (
-				isStruct( definition ) && definition.keyExists( "name" ) && isSimpleValue( definition.name ) && names.len() < 32 && new MetricLabels( [ definition.name ] ).contains(
+				isStruct( definition ) && definition.keyExists( "name" ) && isSimpleValue( definition.name ) && names.len() < 32 && new MetricLabels( [ definition.name ] ).isAllowed(
 					definition.name
 				) && !arrayFindNoCase( names, definition.name )
 			)
@@ -767,7 +767,7 @@ component {
 		any classify = ""
 	){
 		if (
-			!variables.settings.enableMetrics || !variables.owner.getEnabled() || !variables.dependencies.contains(
+			!variables.settings.enableMetrics || !variables.owner.getEnabled() || !variables.dependencies.isAllowed(
 				arguments.name
 			)
 		)

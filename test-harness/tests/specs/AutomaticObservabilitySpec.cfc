@@ -1,5 +1,14 @@
 component extends="testbox.system.BaseSpec" {
 
+	function beforeAll(){
+		// Generated AOP code lives in an ignored directory, absent in a fresh checkout.
+		// Lucee expandPath falls back to the web root while a mapped target does not exist.
+		var generationDirectory = getApplicationMetadata().mappings[ "/sentryAOP" ];
+		var parentDirectory     = getDirectoryFromPath( generationDirectory );
+		if ( !directoryExists( parentDirectory ) ) directoryCreate( parentDirectory );
+		if ( !directoryExists( generationDirectory ) ) directoryCreate( generationDirectory );
+	}
+
 	function run(){
 		describe( "Automatic collectors and adapter configuration", function(){
 			beforeEach( function(){
