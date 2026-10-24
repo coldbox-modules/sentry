@@ -57,6 +57,59 @@ component extends="testbox.system.BaseSpec" {
 					throw( type = "QueueHealthFixtureCleanupFailed", message = errors.toList( "; " ) );
 			} );
 
+			it( "automatically samples actual cbq workers and real database health through a WireBox query factory", function(){
+				startPool();
+				var job = publish( "block" );
+				expect(
+					job.state.started.await(
+						javacast( "long", 5 ),
+						createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
+					)
+				).toBeTrue();
+				variables.service.shutdown();
+				variables.service = new sentry.models.SentryService( {
+					DSN                 : "http://public@127.0.0.1:60320/1",
+					enableMetrics       : true,
+					automaticCollectors : {
+						enabled           : true,
+						intervalSeconds   : 1,
+						runtime           : false,
+						requestSaturation : false,
+						queueWorkers      : [ { name : "health", pool : variables.key } ],
+						databaseQueues    : [
+							{
+								name         : "health",
+								queue        : "health",
+								table        : variables.table,
+								queryFactory : "AutomaticLiveQueries"
+							}
+						]
+					}
+				} );
+				variables.service.getObservability().setAdapterInjector( variables.wirebox );
+				var telemetry = prepareMock( variables.service.getObservability() );
+				telemetry.$( "gauge" );
+				awaitCondition( function(){
+					return variables.service.automaticCollectorDiagnostics().runs > 0;
+				} );
+				expect( variables.service.automaticCollectorDiagnostics().failures ).toBe( 0 );
+				var calls    = telemetry.$callLog( "gauge" ).gauge;
+				var active   = -1;
+				var reserved = -1;
+				for ( var call in calls ) {
+					if ( call[ 1 ] == "queue.executions.active" ) active = call[ 2 ];
+					if ( call[ 1 ] == "queue.backlog.reserved" ) reserved = call[ 2 ];
+				}
+				expect( active ).toBe( 1 );
+				expect( reserved ).toBe( 1 );
+				expect( serializeJSON( calls ) ).toInclude( "queue.depth" );
+				expect( serializeJSON( calls ) ).toInclude( "queue.oldest_age" );
+				job.state.release.countDown();
+				awaitCondition( function(){
+					return hasTimestamp( row( job.id ), "completedDate" );
+				} );
+			} );
+
 			it( "cleans database and worker registries even when draining reports a failure", function(){
 				startPool();
 				var job = publish( "block" );
@@ -225,6 +278,9 @@ component extends="testbox.system.BaseSpec" {
 	private function cleanupFixture( any drain = "" ){
 		var drainCallback = arguments.drain;
 		var errors        = { "messages" : [] };
+		cleanupStep( errors, function(){
+			if ( !isNull( variables.service ) ) variables.service.shutdown();
+		} );
 		// Stop polling before releasing blocked jobs. Preserve their state until all workers exit.
 		cleanupStep( errors, function(){
 			var scheduler = application.cbController.getSchedulerService().getSchedulers()[ "cbScheduler@cbq" ];

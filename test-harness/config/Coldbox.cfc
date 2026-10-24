@@ -116,6 +116,7 @@
 		if ( len( getSystemSetting( "SENTRY_QUEUE_HEALTH_DB", "" ) ) ) {
 			controller.getWireBox().getBinder().map( "QueueHealthState" ).to( "tests.resources.QueueHealthState" ).asSingleton();
 			controller.getWireBox().getBinder().map( "QueueHealthJob" ).to( "tests.resources.QueueHealthJob" );
+			controller.getWireBox().getBinder().map( "AutomaticLiveQueries" ).to( "tests.resources.AutomaticLiveQueries" );
 		}
 		controller.getModuleService()
 			.registerAndActivateModule(

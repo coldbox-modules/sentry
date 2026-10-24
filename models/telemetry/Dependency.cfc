@@ -16,15 +16,24 @@ component {
 		var state   = {};
 		var details = { "outcome" : "success" };
 		try {
-			state.previous = variables.telemetry.getScope();
-			state.span     = variables.telemetry.startSpan(
+			state.previous                   = variables.telemetry.getScope();
+			var next                         = structCopy( state.previous );
+			next[ "dependencyObservations" ] = duplicate( state.previous.dependencyObservations ?: [] );
+			next.dependencyObservations.append( arguments.name );
+			try {
+				variables.telemetry.setScope( next );
+			} catch ( any unavailable ) {
+			}
+			state.span = variables.telemetry.startSpan(
 				arguments.name,
 				"app.dependency",
 				{ "dependency.name" : arguments.name }
 			);
-			var next       = structCopy( state.previous );
 			next[ "span" ] = state.span;
-			variables.telemetry.setScope( next );
+			try {
+				variables.telemetry.setScope( next );
+			} catch ( any unavailable ) {
+			}
 		} catch ( any unavailable ) {
 		}
 		started = variables.clock.nanoTime();

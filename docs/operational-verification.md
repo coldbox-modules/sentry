@@ -1,4 +1,26 @@
-# Local operational-observability verification — October 22, 2026
+# Local operational-observability verification — October 24, 2026
+
+The configuration-driven automatic collectors and dependency adapters passed the complete local suite: **130/130 on each engine, zero failures, errors or skips**. Manual APIs remain covered. Each run includes 25 automatic-configuration specs and 10 live PostgreSQL/cbq cases.
+
+| Engine | JVM / servlet runtime | Current raw evidence |
+| --- | --- | --- |
+| Lucee 5.4.8.2 | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-auto-final-lucee5.json` |
+| BoxLang 1.18.0+66 | Temurin 21.0.10+7, Runwar 6.1.8 | `/tmp/sentry-auto-final-boxlang.json` |
+| Adobe ColdFusion 2023 update 25 | Temurin 21.0.10+7, Runwar 5.2.7 | `/tmp/sentry-auto-final-adobe.json` |
+
+The new coverage verifies default-off behavior, partial settings, bounded names, callback/object/WireBox-interface contracts, real WireBox method interception, original returns/errors/null/void behavior, manual/automatic deduplication, failing observation/classifier setup, once-only query setup/cleanup, actual scheduled collection, scope isolation, no overlapping cycles, shutdown during a cycle, local receipt failures, automatic handler/render phases, early exits, invalid phase names and gated Server-Timing publication. The tenth live case runs the background sampler against a real blocked cbq job and a WireBox query factory, asserting actual execution activity, reservation, depth and oldest-age metrics.
+
+Review findings are fixed and re-reviewed: open timing tokens on early exits, partial nested settings at module load, dispatch after shutdown, scope lookup breaking fail-open execution, receipt-poll failures omitted from cycle diagnostics, an accidentally empty disabled test, and complex phase names reaching deduplication before validation. Full testing also found and fixed a BoxLang built-in `attempt()` name collision and missing application context on raw scheduled runnables. Automatic work now uses ColdBox's context-aware Runnable proxy when available, including Adobe JDBC thread-state cleanup. The reviewer found no remaining actionable bug or CFML/BoxLang compatibility issue.
+
+The existing prepared runtimes and read-only ColdBox/TestBox/qb/cbq dependencies described below were reused. Adobe's PostgreSQL package was registered, but its servlet context could not load the JDBC class after restart. The owned ignored runtime was repaired by reinstalling its CFPM PostgreSQL package and adding its existing JDBC 42.7.3 JAR to `WEB-INF/lib`, followed by restart. Both package registration and classpath availability were required; no product workaround or installed application dependency change was made. This qualifies these prepared local runtimes, not a fresh installation.
+
+CFFormat checked **63 files**; `git diff --check` passed. No browser code changed; the earlier **28/28** browser result below is historical and was not rerun for this backend-only change. Engine suites share a mutable loopback receiver and must run sequentially: a concurrent run interfered with one delivery-diagnostics case; the final sequential rerun passed. Raw evidence is local temporary output, not a durable CI artifact.
+
+The dedicated database was `sentry_queue_health_auto_20261024`, on the pre-existing local PostgreSQL 18.1 server. Fixture tables were removed, owned test processes stopped, and the disposable database dropped after verification. Remaining limits: no fresh-install or full hosted-engine matrix, Lucee 6, real MySQL/SQL Server polling, Redis/SQS adapters, worker-process crash recovery, real heartbeat producer, production profiling, real provider delivery/indexing or consumer adoption. Consumer adapters must set their own query/network timeouts; shutdown cannot force an uncooperative callback to return. WireBox interception applies to configured methods on subsequently WireBox-created instances; it cannot intercept arbitrary HTTP clients or objects created with `new`. Manual APIs cover those paths.
+
+## Earlier local verification — October 22, 2026
+
+The following sections retain the evidence and scope of the earlier commits. Their totals and local-only statements describe those runs, before the later authorized push and draft PR update.
 
 After subagent review, the timestamp clock correction and the request/dependency/worker-health additions and real database/worker integration coverage, the final module harness passed **104/104** on each local engine, with zero failures, errors or skips:
 

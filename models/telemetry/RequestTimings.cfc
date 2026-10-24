@@ -3,11 +3,13 @@ component {
 
 	function init(
 		required any telemetry,
-		array names        = [],
-		numeric maxSamples = 64
+		array names         = [],
+		numeric maxSamples  = 64,
+		boolean emitMetrics = false
 	){
-		variables.telemetry = arguments.telemetry;
-		variables.names     = [];
+		variables.telemetry   = arguments.telemetry;
+		variables.emitMetrics = arguments.emitMetrics;
+		variables.names       = [];
 		for ( var name in arguments.names ) {
 			if (
 				!isNull( name ) && isSimpleValue( name ) && variables.names.len() < 32 && len( name ) > 0 && len(
@@ -60,11 +62,22 @@ component {
 			return;
 		}
 		try {
-			var name   = state.name;
-			var metric = variables.metrics[ name ] ?: { "duration" : 0, "count" : 0 };
-			metric.duration += max( 0, ( variables.clock.nanoTime() - state.started ) / 1000000 );
+			var name     = state.name;
+			var metric   = variables.metrics[ name ] ?: { "duration" : 0, "count" : 0 };
+			var duration = max( 0, ( variables.clock.nanoTime() - state.started ) / 1000000 );
+			metric.duration += duration;
 			metric.count++;
 			variables.metrics[ name ] = metric;
+		} catch ( any unavailable ) {
+		}
+		try {
+			if ( variables.emitMetrics && !isNull( local.duration ) )
+				variables.telemetry.distribution(
+					"http.server.phase.duration",
+					duration,
+					{ "phase" : state.name },
+					"millisecond"
+				);
 		} catch ( any unavailable ) {
 		}
 		finishSpan( state, arguments.status );

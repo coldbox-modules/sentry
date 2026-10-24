@@ -200,6 +200,7 @@ component accessors=true singleton threadSafe {
 			variables.observability.shutdown();
 		}
 		variables.observability = new telemetry.Observability( this, variables.settings );
+		if ( !isNull( variables.wirebox ) ) variables.observability.setAdapterInjector( variables.wirebox );
 
 		// in a non ColdBox context, ensure functionLineNums exists
 		// so this service can still be used if functionLineNums
@@ -297,7 +298,7 @@ component accessors=true singleton threadSafe {
 		return variables.observability.captureDatabasePool( argumentCollection = arguments );
 	}
 	function newRequestTimings(){
-		return variables.observability.newRequestTimings();
+		return variables.observability.newRequestTimings( argumentCollection = arguments );
 	}
 	function beginRequestObservation(){
 		return variables.observability.beginRequestObservation( argumentCollection = arguments );
@@ -328,6 +329,18 @@ component accessors=true singleton threadSafe {
 	}
 	function withDependency(){
 		return variables.observability.withDependency( argumentCollection = arguments );
+	}
+	function automaticCollectorDiagnostics(){
+		return variables.observability.automaticCollectorDiagnostics( argumentCollection = arguments );
+	}
+	function collectAutomaticMetrics(){
+		return variables.observability.collectAutomaticMetrics( argumentCollection = arguments );
+	}
+	function startAutomaticCollectors(){
+		return variables.observability.startAutomaticCollectors( argumentCollection = arguments );
+	}
+	function getRequestTimings(){
+		return variables.observability.getRequestTimings( argumentCollection = arguments );
 	}
 	function withOperation(){
 		return variables.observability.withOperation( argumentCollection = arguments );

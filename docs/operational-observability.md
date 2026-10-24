@@ -1,6 +1,6 @@
 # Operational observability
 
-All collectors are called explicitly by the consumer. This module does not create uptime monitors, alert rules, scheduler tasks, polling threads, or notification destinations. Existing `enableMetrics`, `enableQueueTracing`, `enableMonitors`, trace sampling, and privacy filters still apply. Configure fixed labels; never derive names from URLs, tenant IDs, email addresses, filenames, job IDs, or exception messages.
+Collectors can run through the manual APIs or the opt-in configuration-driven background sampler below. The sampler owns one scheduled executor per service and stops with that service. This module does not create uptime monitors, alert rules, or notification destinations. Existing `enableMetrics`, `enableQueueTracing`, `enableMonitors`, trace sampling, and privacy filters still apply. Configure fixed labels; never derive names from URLs, tenant IDs, email addresses, filenames, job IDs, or exception messages.
 
 ## Delivery freshness
 
@@ -168,7 +168,7 @@ health = sentry.queueWorkerDiagnostics( "mail" );
 
 The cbq adapter emits configured worker concurrency and active executions from executor statistics when the executor advertises task-method support. Its current executor capacity is not an activity count. An unavailable/uninitialized executor leaves active executions absent; these measurements do not prove that workers are alive. A provider snapshot may additionally supply actual `activeWorkers`, `lastHeartbeatAt` (JVM-compatible Unix seconds), `runnable`, `delayed`, `reserved`, `staleReservations`, and cumulative `retries`/`exhausted`. Fields map to `queue.workers.configured`, `queue.workers.active`, `queue.executions.active`, `queue.worker.heartbeat_age` (seconds), `queue.backlog.runnable`, `.delayed`, `.reserved`, `queue.reservations.stale`, `queue.retries.total`, and `queue.exhausted.total`, labeled only by configured `worker.name`. A heartbeat must come from real worker activity; zero/absent/future heartbeat timestamps are omitted. A successful poll does not manufacture a worker heartbeat.
 
-Only available finite nonnegative numeric fields are emitted. Cumulative retry/exhaustion gauges reset with their provider; compute deltas and handle resets. They differ from existing per-attempt and terminal-hook counters. Choose one producer for each series. Failed/empty snapshots emit no fabricated zeros and leave the last successful timestamp unchanged; read diagnostics to detect stale polling. No polling threads, queue mutations, job IDs or payload capture are introduced.
+Only available finite nonnegative numeric fields are emitted. Cumulative retry/exhaustion gauges reset with their provider; compute deltas and handle resets. They differ from existing per-attempt and terminal-hook counters. Choose one producer for each series. Failed/empty snapshots emit no fabricated zeros and leave the last successful timestamp unchanged; read diagnostics to detect stale polling. Manual capture creates no polling threads. The optional automatic sampler is described below; neither mode mutates queues or captures job IDs/payloads.
 
 The optional cbq database-provider adapter separates pending work from delayed work and expired reservations:
 
@@ -196,3 +196,82 @@ Use a fresh correctly configured qb builder per call. `snapshot(queue)` performs
 The integration fixture loads the real cbq module and registers its own database connections/pools. Jobs are serialized, persisted, fetched by cbq's real scheduled poller, deserialized and executed on actual cbq worker executors. Java latches hold a job while sampling reservation and executor activity. Tests cover empty/mixed queues, bound queue-name parameters, idle/busy/drained workers, delayed execution, retries, terminal exhaustion, expired execution leases and staged claims. Lease recovery uses deliberately expired fixture rows; it does not kill a worker process or qualify crash recovery.
 
 Each case creates a uniquely named table in the dedicated database and drops it afterward. Teardown stops polling, releases blocked jobs, drains/shuts down workers, removes executor/config registrations, clears shared state and closes telemetry. A forced-drain-failure regression verifies cleanup continues after an error. Synthetic failures cannot inherit an external `SENTRY_DSN`: this mode forces the module's receiver URL to loopback and disables automatic error/appender capture. No application dependency source or provider settings are modified.
+
+
+## Configuration-driven automatic collection
+
+Manual APIs remain available. Configure automaticCollectors.enabled with enableMetrics and a valid DSN to start one background sampler per service. Partial automaticCollectors overrides inherit defaults. Settings are applied when the service/module starts; restart the service after changing adapter configuration.
+
+```cfml
+moduleSettings.sentry = {
+    DSN: getSystemSetting( "SENTRY_DSN", "" ),
+    enableMetrics: true,
+    enableRequestTracing: true,
+    tracesSampleRate: 0.1,
+    enableRequestSaturation: true,
+    enableAutomaticRequestTimings: true,
+    publishServerTiming: false,
+    automaticCollectors: {
+        enabled: true,
+        intervalSeconds: 60,
+        runtime: true,
+        requestSaturation: true,
+        queueWorkers: [ { name: "mail", pool: "mail" } ],
+        databaseQueues: [ {
+            name: "mail", queue: "mail", table: "cbq_jobs",
+            queryFactory: "MailQueueQueries"
+        } ],
+        requestExecutors: [ { name: "http", adapter: "HttpExecutorSnapshot" } ],
+        databasePools: [ { name: "primary", adapter: function( context ) {
+            return poolAdapter.snapshot();
+        } } ]
+    },
+    dependencyAdapters: [ {
+        name: "mail", mapping: "MailClient", methods: [ "send" ],
+        classify: "MailOutcomeClassifier"
+    } ]
+};
+```
+
+The fixed delay starts after the first interval and follows the end of each cycle. It defaults to 60 seconds and permits integer intervals from 1 through 3600 seconds. Cycles cannot overlap; a slow adapter delays the next cycle rather than creating more threads. Keep callbacks bounded and configure query/network timeouts in consumer adapters. Shutdown interrupts the owned executor and prevents dispatching later adapters; an already running callback may take time to return. The sampler never inherits the caller's active trace. When ColdBox is available, its context-aware Runnable proxy establishes the engine application context for named datasources and releases Adobe JDBC thread state after each run. It continues other collectors after a failed adapter and retains only bounded process-local runs/failures/skipped/lastSuccessAt/lastFailureAt diagnostics, available through sentry.automaticCollectorDiagnostics(). The diagnostics do not contain callback results or exception messages and are not emitted recursively as telemetry.
+
+Runtime gauges, request saturation, worker activity, queue health, request executors and database pools use the existing collection APIs. Database queues also emit queue.depth and queue.oldest_age for unclaimed pending work (runnable plus delayed); claimed work stays in the separate reserved/stale series. Missing or failed measurements never fabricate zeros. deliveryDiagnostics:true polls local receipts without sending delivery-health metrics through the same transport. Request saturation still requires enableRequestSaturation; unsupported pool/executor fields remain absent.
+
+Each adapter group processes at most 32 definitions. Valid configured names extend the existing bounded label allowlists automatically; explicit manual names are retained first. Worker and database-queue definitions share the queueWorkerNames budget. Use one producer for each metric series. Manual capture calls are still valid, but calling them alongside an automatic producer intentionally emits an additional sample. sentry.collectAutomaticMetrics() runs a cycle explicitly through the same non-overlap guard; sentry.startAutomaticCollectors() is idempotent. Standalone services can use callbacks; WireBox mappings require an injector (ColdBox supplies it automatically).
+
+### Callback and WireBox adapter contracts
+
+An adapter can be a callback, a WireBox mapping ID, an object implementing the contract, or a descriptor such as { mapping: "MailQueueQueries", method: "newQuery" }. Descriptors allow an explicit compatible method. Instances are resolved lazily; the module does not cache consumer builders or pools.
+
+| Adapter | Callback arguments / default interface method | Result |
+| --- | --- | --- |
+| Worker, executor or pool snapshot | callback(context) / ISnapshotAdapter.sample(context) | Supported numeric fields documented above |
+| Database query factory | callback(context) / IQueryFactory.newQuery(context) | Fresh qb builder with correct datasource/grammar |
+| Dependency classifier | callback(result,failure) / IDependencyClassifier.classify(result,failure) | Bounded outcome/statusCode/retryCount/circuitState fields |
+| Query tracing configuration | callback(context) / IQueryAdapter.configure(context) | Built-in adapter mode, or {mode:"custom",shutdown:callback} |
+
+Interfaces are under sentry.models.telemetry.adapters. Snapshot/query-factory context contains only the fixed name and collector kind. A query tracing adapter receives context.telemetry and context.applicationName. Existing queryAdapter values none, qb, lucee, auto and boxlang keep their behavior. A custom configuration callback/mapping can install its own query hooks and return custom with a shutdown callback to remove them; returning qb/auto selects the existing integrations. Invalid or unavailable custom configuration selects none. Install any required adapter mappings before module startup. This queryAdapter controls tracing; a databaseQueues queryFactory controls which builder reads queue statistics.
+
+For example, the WireBox mapping MailQueueQueries can implement:
+
+```cfml
+component implements="sentry.models.telemetry.adapters.IQueryFactory" {
+    property name="wirebox" inject="wirebox";
+    any function newQuery( required struct context ) {
+        return variables.wirebox.getInstance( "QueryBuilder@qb" )
+            .setDefaultOptions( { datasource: "mail" } );
+    }
+}
+```
+
+The callback equivalent is queryFactory:function(context){ return wirebox.getInstance("QueryBuilder@qb").setDefaultOptions({datasource:"mail"}); }. The sampler reads only the configured queue/table. A worker pool definition uses the actual cbq pool name through Config@cbq; callback/mapping snapshots are the alternative for other providers. Polling does not generate worker heartbeats.
+
+### Automatic dependency and request instrumentation
+
+A dependencyAdapters entry binds WireBox AOP to the exact mapping and named public methods. Up to 32 entries and 16 methods per entry are retained. It observes normal calls to WireBox-created instances without a manual wrapper. Objects created with new, already-created singletons and internal calls bypassing the WireBox proxy require the manual API. Bindings are registered at module load; dependencyAdapterGenerationPath selects a writable mapping for generated AOP code when the module installs the Mixer listener. Existing Mixer configuration is reused.
+
+Classification follows the manual withDependency contract. A failing classifier yields unknown and cannot replace the original result/exception. The same dependency name is observed once when a manual wrapper and automatic method advice overlap or nest; the outer observation supplies its classifier. Different configured dependency names remain separate logical observations. Method arguments, results and raw exceptions never become telemetry attributes.
+
+With enableAutomaticRequestTimings, ColdBox preEvent/postEvent measure handler work and preRender/postRender measure rendering, using a shared request-local timing instance. These are framework boundaries, not individually classified business operations. Automatic finishes also emit http.server.phase.duration in milliseconds. Open phases are drained on exceptions and explicit endRequest, including early redirects; keep the Application onRequestEnd fallback. Nested events can overlap, so do not sum their durations as wall time. The optional Server-Timing header is only published when publishServerTiming is true and an optional serverTimingFilter(event) permits it; responses that already committed headers cannot receive it.
+
+Manual newRequestTimings()/measure() and withDependency()/withOperation() remain unchanged. sentry.getRequestTimings() returns the active automatic instance, or null outside an automatically timed request. Use distinct names for additional manual phases instead of timing the same automatic handler/render interval again.

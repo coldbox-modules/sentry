@@ -19,8 +19,9 @@ component {
 	this.mappings[ "/tests" ] = getDirectoryFromPath( getCurrentTemplatePath() );
 
 	// The application root
-	rootPath                 = reReplaceNoCase( this.mappings[ "/tests" ], "tests(\\|/)", "" );
-	this.mappings[ "/root" ] = rootPath;
+	rootPath                      = reReplaceNoCase( this.mappings[ "/tests" ], "tests(\\|/)", "" );
+	this.mappings[ "/root" ]      = rootPath;
+	this.mappings[ "/sentryAOP" ] = rootPath & ".engine/aop";
 
 	// UPDATE THE NAME OF THE MODULE IN TESTING BELOW
 	request.MODULE_NAME = "sentry";

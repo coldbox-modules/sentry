@@ -40,42 +40,110 @@ component {
 	function configure(){
 		settings = {
 			// Sentry token
-			"ServerSideToken"        : "",
+			"ServerSideToken"                 : "",
 			// Enable the Sentry LogBox Appender Bridge
-			"enableLogBoxAppender"   : true,
-			"async"                  : true,
+			"enableLogBoxAppender"            : true,
+			"async"                           : true,
 			// Min/Max levels for appender
-			"levelMin"               : "FATAL",
-			"levelMax"               : "ERROR",
+			"levelMin"                        : "FATAL",
+			"levelMax"                        : "ERROR",
 			// Enable/disable error logging
-			"enableExceptionLogging" : true,
+			"enableExceptionLogging"          : true,
 			// Sentry recommends not sending cookie and form data by default
-			"sendCookies"            : false,
-			"sendPostData"           : false,
+			"sendCookies"                     : false,
+			"sendPostData"                    : false,
 			// Data sanitization, scrub fields and headers, replaced with "[Filtered]" at runtime
-			"scrubFields"            : [],
-			"scrubHeaders"           : [],
-			"release"                : "",
-			"environment"            : ( !isNull( controller ) ? controller.getSetting( "environment" ) : "" ),
-			"DSN"                    : "",
-			"publicKey"              : "",
-			"privateKey"             : "",
-			"projectID"              : 0,
-			"sentryUrl"              : "https://sentry.io",
+			"scrubFields"                     : [],
+			"scrubHeaders"                    : [],
+			"release"                         : "",
+			"environment"                     : ( !isNull( controller ) ? controller.getSetting( "environment" ) : "" ),
+			"DSN"                             : "",
+			"publicKey"                       : "",
+			"privateKey"                      : "",
+			"projectID"                       : 0,
+			"sentryUrl"                       : "https://sentry.io",
 			// posting to "#sentryUrl#/api/#projectID#/store" is deprecated, but backward compatible
 			// set to "envelope" to send events to modern "#sentryUrl#/api/#projectID#/envelope"
-			"sentryEventEndpoint"    : "store",
-			"serverName"             : cgi.server_name,
-			"appRoot"                : expandPath( "/" ),
-			"sentryVersion"          : 7,
+			"sentryEventEndpoint"             : "store",
+			"serverName"                      : cgi.server_name,
+			"appRoot"                         : expandPath( "/" ),
+			"sentryVersion"                   : 7,
 			// This is not arbitrary but must be a specific value. Leave as "cfml"
 			//  https://docs.sentry.io/development/sdk-dev/attributes/
-			"platform"               : "cfml",
-			"logger"                 : ( !isNull( controller ) ? controller.getSetting( "appName" ) : "sentry" ),
-			"userInfoUDF"            : "",
-			"extraInfoUDFs"          : {}, // these two settings may be added but they
-			"showJavaStackTrace"     : false,
-			"throwOnPostError"       : false
+			"platform"                        : "cfml",
+			"logger"                          : ( !isNull( controller ) ? controller.getSetting( "appName" ) : "sentry" ),
+			"userInfoUDF"                     : "",
+			"extraInfoUDFs"                   : {}, // these two settings may be added but they
+			"showJavaStackTrace"              : false,
+			"throwOnPostError"                : false,
+			// Master switch for emitted metrics. Automatic collectors and dependency metrics require it.
+			"enableMetrics"                   : false,
+			// Record eligible ColdBox request traces; tracesSampleRate controls trace volume.
+			"enableRequestTracing"            : false,
+			// Track active eligible requests independently of trace sampling.
+			"enableRequestSaturation"         : false,
+			// Maximum retained active request observations; excess starts are counted as untracked.
+			"maxObservedRequests"             : 4096,
+			// Age in seconds used by the long-running-request gauge; this does not declare a timeout.
+			"requestLongRunningSeconds"       : 30,
+			// Observe compatible cbq execution/publish hooks and their attempt durations.
+			"enableQueueTracing"              : false,
+			// Count compatible cbq terminal completion/failure hooks separately from attempts.
+			"enableQueueJobMetrics"           : false,
+			// Fixed queue destination labels allowed on attempt/job metrics.
+			"queueMetricDestinations"         : [],
+			// Keep bounded, process-local envelope outcomes. Acceptance does not prove indexing.
+			"enableDeliveryDiagnostics"       : false,
+			// Query tracing: none/qb/lucee/auto/boxlang, callback(context), or mapping implementing IQueryAdapter.configure(context).
+			"queryAdapter"                    : "none",
+			// Manually allowed request-phase names; automatic timing also supplies handler/render.
+			"requestTimingNames"              : [],
+			// Time preEvent/postEvent and preRender/postRender automatically, preserving manual phase APIs.
+			"enableAutomaticRequestTimings"   : false,
+			// Publish the automatic instance's Server-Timing header when the response still permits headers.
+			"publishServerTiming"             : false,
+			// Optional callback(event) authorizing header publication; requestFilter still controls collection.
+			"serverTimingFilter"              : "",
+			// Fixed business workflow names allowed by the manual withOperation API.
+			"operationNames"                  : [],
+			// Fixed provider names allowed on manual workflow observations.
+			"providerNames"                   : [],
+			// Fixed names permitted by withDependency; configured dependencyAdapters add their names automatically.
+			"dependencyNames"                 : [],
+			// Up to 32 {name,mapping,methods:[...],classify:callback|mapping|{mapping,method}} entries.
+			// WireBox-created instances are intercepted; classifier mappings implement IDependencyClassifier.classify(result,failure).
+			"dependencyAdapters"              : [],
+			// Writable WireBox AOP generation mapping, used only when this module registers the Mixer listener.
+			"dependencyAdapterGenerationPath" : "/coldbox/system/aop/tmp",
+			// Fixed worker metric names; automatic queue definitions add their names to the bounded allowlist.
+			"queueWorkerNames"                : [],
+			// Fixed executor names; automatic requestExecutors definitions add their names.
+			"requestExecutorNames"            : [],
+			// Fixed pool names; automatic databasePools definitions add their names.
+			"databasePoolNames"               : [],
+			"automaticCollectors"             : {
+				// Start one background sampler per service. Disabled by default; also requires enableMetrics and a valid DSN.
+				"enabled"             : false,
+				// Fixed delay between completed sampling cycles, in seconds, from 1 through 3600. No overlapping cycles.
+				"intervalSeconds"     : 60,
+				// Sample available heap/thread/CPU/GC values; unsupported values stay absent.
+				"runtime"             : true,
+				// Emit active/oldest/long-running request gauges; requires enableRequestSaturation.
+				"requestSaturation"   : true,
+				// Poll local receipt state; never send delivery-health metrics through their own transport.
+				"deliveryDiagnostics" : false,
+				// Up to 32 {name,pool:cbqPoolName} or {name,adapter:callback|mapping|{mapping,method}} definitions.
+				// Snapshot adapters implement ISnapshotAdapter.sample(context), returning supported worker numeric fields.
+				"queueWorkers"        : [],
+				// Up to 32 {name,queue,table,queryFactory} definitions. queue defaults to name; table to cbq_jobs.
+				// Emits pending depth/oldest age as well as runnable/delayed/lease health.
+				// queryFactory is callback(context), IQueryFactory.newQuery(context), or {mapping,method}; omitted uses QueryBuilder@qb.
+				"databaseQueues"      : [],
+				// Up to 32 {name,adapter} definitions returning active/max/queued/rejected via callback(context) or ISnapshotAdapter.sample(context).
+				"requestExecutors"    : [],
+				// Up to 32 {name,adapter} definitions returning active/idle/max/waiters/timeouts via callback(context) or ISnapshotAdapter.sample(context).
+				"databasePools"       : []
+			}
 		};
 
 		// Try to look up the release based on a box.json
@@ -113,13 +181,20 @@ component {
 	 * Fired when the module is registered and activated.
 	 */
 	function onLoad(){
-		// Incorporate defaults into settings
-		if ( settings.queryAdapter == "auto" || settings.queryAdapter == "boxlang" ) {
-			wirebox
-				.getInstance( "SentryService@sentry" )
-				.getObservability()
-				.configureQueryInstrumentation( getApplicationMetadata().name );
+		// Initialize only when an explicitly configured integration needs startup work.
+		if (
+			!isSimpleValue( settings.queryAdapter ) || settings.queryAdapter != "none" || (
+				isStruct( settings.automaticCollectors ) && settings.automaticCollectors.keyExists( "enabled" ) && isBoolean(
+					settings.automaticCollectors.enabled
+				) && settings.automaticCollectors.enabled
+			) || ( isArray( settings.dependencyAdapters ) && settings.dependencyAdapters.len() )
+		) {
+			var telemetry = wirebox.getInstance( "SentryService@sentry" ).getObservability();
+			telemetry.setAdapterInjector( wirebox );
+			telemetry.configureQueryInstrumentation( getApplicationMetadata().name );
+			registerDependencyAdapters( telemetry );
 		}
+
 		binder.mapDSL( "sentryCache", "#moduleMapping#.models.dsl.CacheDSL" );
 		wirebox.registerDSL( "sentryCache", "#moduleMapping#.models.dsl.CacheDSL" );
 		settings.scrubFields.addAll( SCRUB_FIELDS );
@@ -142,6 +217,40 @@ component {
 		if ( settings.enableLogBoxAppender ) {
 			loadAppenders();
 		}
+	}
+
+	private function registerDependencyAdapters( required any telemetry ){
+		var bindings = arguments.telemetry.dependencyBindings();
+		if ( !bindings.len() ) return;
+		if (
+			!binder
+				.getListeners()
+				.some( function( listener ){
+					return compareNoCase( listener.class, "coldbox.system.aop.Mixer" ) == 0;
+				} )
+		) {
+			binder.listener(
+				class      = "coldbox.system.aop.Mixer",
+				properties = { "generationPath" : settings.dependencyAdapterGenerationPath },
+				register   = true
+			);
+		}
+		binder
+			.mapAspect( "SentryDependencyInterceptor@sentry", false )
+			.to( "#moduleMapping#.models.telemetry.DependencyInterceptor" );
+		var mappings = [];
+		var methods  = [];
+		for ( var binding in bindings ) {
+			if ( !arrayFindNoCase( mappings, binding.mapping ) ) mappings.append( binding.mapping );
+			for ( var method in binding.methods ) {
+				if ( !arrayFindNoCase( methods, method ) ) methods.append( method );
+			}
+		}
+		binder.bindAspect(
+			binder.match().mappings( mappings.toList() ),
+			binder.match().methods( methods.toList() ),
+			"SentryDependencyInterceptor@sentry"
+		);
 	}
 
 	/**

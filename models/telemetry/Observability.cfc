@@ -5,7 +5,11 @@ component {
 		variables[ "owner" ]    = arguments.owner;
 		variables[ "settings" ] = arguments.settings;
 		variables.settings.append( defaults(), false );
-		variables.requests = new RequestSaturation(
+		variables.adapterResolver = new AdapterResolver();
+		normalizeAutomaticSettings();
+		variables.queryAdapterConfigured = false;
+		variables.closed                 = createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false );
+		variables.requests               = new RequestSaturation(
 			this,
 			variables.settings.maxObservedRequests,
 			variables.settings.requestLongRunningSeconds
@@ -65,6 +69,12 @@ component {
 				createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
 			);
 		}
+		variables.collectors = new AutomaticCollectors(
+			this,
+			variables.settings.automaticCollectors,
+			variables.adapterResolver
+		);
+		if ( collectionEnabled() ) variables.collectors.start();
 		return this;
 	}
 	function defaults(){
@@ -98,10 +108,26 @@ component {
 			"trustIncomingTrace"             : false,
 			"requestFilter"                  : "",
 			"attributeFilter"                : "",
-			"requestTimingNames"             : [],
-			"operationNames"                 : [],
-			"providerNames"                  : [],
-			"databasePoolNames"              : []
+			"enableAutomaticRequestTimings"  : false,
+			"publishServerTiming"            : false,
+			"serverTimingFilter"             : "",
+			"automaticCollectors"            : {
+				enabled             : false,
+				intervalSeconds     : 60,
+				runtime             : true,
+				requestSaturation   : true,
+				deliveryDiagnostics : false,
+				queueWorkers        : [],
+				databaseQueues      : [],
+				requestExecutors    : [],
+				databasePools       : []
+			},
+			"dependencyAdapters"              : [],
+			"dependencyAdapterGenerationPath" : "/coldbox/system/aop/tmp",
+			"requestTimingNames"              : [],
+			"operationNames"                  : [],
+			"providerNames"                   : [],
+			"databasePoolNames"               : []
 		};
 	}
 	function registerBoxLangQueries( required string applicationName, string databaseSystem = "other" ){
@@ -116,9 +142,37 @@ component {
 		return listener;
 	}
 	function configureQueryInstrumentation( required string applicationName ){
-		if ( variables.settings.queryAdapter == "auto" || variables.settings.queryAdapter == "boxlang" ) {
+		if ( variables.queryAdapterConfigured ) return variables.settings.queryAdapter;
+		variables.queryAdapterConfigured = true;
+		var selected                     = variables.settings.queryAdapter;
+		if ( !isSimpleValue( selected ) || !listFind( "none,qb,lucee,auto,boxlang", selected ) ) {
 			try {
-				// Partial native listeners cannot close caught direct-query failures. Prefer complete fallback.
+				var configured = variables.adapterResolver.call(
+					selected,
+					"configure",
+					{
+						"context" : {
+							"telemetry"       : this,
+							"applicationName" : arguments.applicationName
+						}
+					}
+				);
+				if ( isStruct( configured ) ) {
+					if ( configured.keyExists( "shutdown" ) && isCustomFunction( configured.shutdown ) )
+						variables.queryAdapterShutdown = configured.shutdown;
+					selected = configured.mode;
+				} else {
+					selected = configured;
+				}
+				if ( !isSimpleValue( selected ) || !listFind( "none,qb,lucee,auto,boxlang,custom", selected ) )
+					selected = "none";
+			} catch ( any unavailable ) {
+				selected = "none";
+			}
+		}
+		variables.settings.queryAdapter = selected;
+		if ( selected == "auto" || selected == "boxlang" ) {
+			try {
 				createObject( "java", "ortus.boxlang.runtime.events.BoxEvent" ).valueOf( "ON_QUERY_EXECUTE_ERROR" );
 				registerBoxLangQueries( arguments.applicationName, variables.settings.databaseSystem ?: "other" );
 				variables.settings.queryAdapter = "boxlang";
@@ -128,6 +182,145 @@ component {
 		}
 		return variables.settings.queryAdapter;
 	}
+	function setAdapterInjector( required any injector ){
+		variables.adapterResolver.setInjector( arguments.injector );
+		return this;
+	}
+	function collectionEnabled(){
+		return variables.settings.enableMetrics && variables.owner.getEnabled();
+	}
+	function automaticCollectorDiagnostics(){
+		return variables.collectors.diagnostics();
+	}
+	function collectAutomaticMetrics(){
+		variables.collectors.tick();
+	}
+	function startAutomaticCollectors(){
+		if ( collectionEnabled() ) return variables.collectors.start();
+		return false;
+	}
+	private function normalizeAutomaticSettings(){
+		var collectorDefaults = defaults().automaticCollectors;
+		if ( !isStruct( variables.settings.automaticCollectors ) )
+			variables.settings.automaticCollectors = { "enabled" : false };
+		variables.settings.automaticCollectors.append( collectorDefaults, false );
+		for (
+			var flag in [
+				"enabled",
+				"runtime",
+				"requestSaturation",
+				"deliveryDiagnostics"
+			]
+		) {
+			if ( !isBoolean( variables.settings.automaticCollectors[ flag ] ) )
+				variables.settings.automaticCollectors[ flag ] = collectorDefaults[ flag ];
+		}
+		for (
+			var kind in [
+				"queueWorkers",
+				"databaseQueues",
+				"requestExecutors",
+				"databasePools"
+			]
+		) {
+			if ( !isArray( variables.settings.automaticCollectors[ kind ] ) )
+				variables.settings.automaticCollectors[ kind ] = [];
+		}
+		if ( !isArray( variables.settings.dependencyAdapters ) ) variables.settings.dependencyAdapters = [];
+		variables.dependencyRules = [];
+		for ( var i = 1; i <= min( 32, variables.settings.dependencyAdapters.len() ); i++ ) {
+			var rule = variables.settings.dependencyAdapters[ i ];
+			if (
+				!isStruct( rule ) || !rule.keyExists( "name" ) || !rule.keyExists( "mapping" ) || !rule.keyExists( "methods" ) || !isSimpleValue(
+					rule.name
+				) || !isSimpleValue( rule.mapping ) || !isArray( rule.methods )
+			)
+				continue;
+			if (
+				!new MetricLabels( [ rule.name ] ).contains( rule.name ) || !len( rule.mapping ) || reFind(
+					"[^A-Za-z0-9_.@:/-]",
+					rule.mapping
+				)
+			)
+				continue;
+			var methods = [];
+			for ( var method in rule.methods ) {
+				if (
+					!isNull( method ) && isSimpleValue( method ) && methods.len() < 16 && len( method ) && !reFind(
+						"[^A-Za-z0-9_]",
+						method
+					) && !arrayFindNoCase( methods, method )
+				)
+					methods.append( method );
+			}
+			if ( methods.len() )
+				variables.dependencyRules.append( {
+					"name"     : rule.name,
+					"mapping"  : rule.mapping,
+					"methods"  : methods,
+					"classify" : rule.classify ?: ""
+				} );
+		}
+		addAdapterNames( "dependencyNames", variables.dependencyRules );
+		addAdapterNames( "queueWorkerNames", variables.settings.automaticCollectors.queueWorkers );
+		addAdapterNames( "queueWorkerNames", variables.settings.automaticCollectors.databaseQueues );
+		addAdapterNames( "requestExecutorNames", variables.settings.automaticCollectors.requestExecutors );
+		addAdapterNames( "databasePoolNames", variables.settings.automaticCollectors.databasePools );
+	}
+	private function addAdapterNames( required string setting, required array definitions ){
+		var names = variables.settings[ arguments.setting ];
+		for ( var i = 1; i <= min( 32, arguments.definitions.len() ); i++ ) {
+			var definition = arguments.definitions[ i ];
+			if (
+				isStruct( definition ) && definition.keyExists( "name" ) && isSimpleValue( definition.name ) && names.len() < 32 && new MetricLabels( [ definition.name ] ).contains(
+					definition.name
+				) && !arrayFindNoCase( names, definition.name )
+			)
+				names.append( definition.name );
+		}
+		variables.settings[ arguments.setting ] = names;
+	}
+	function dependencyBindings(){
+		var result = [];
+		for ( var rule in variables.dependencyRules )
+			result.append( {
+				"mapping" : rule.mapping,
+				"methods" : duplicate( rule.methods )
+			} );
+		return result;
+	}
+	function dependencyRule( required string mapping, required string method ){
+		for ( var rule in variables.dependencyRules ) {
+			if (
+				compareNoCase( rule.mapping, arguments.mapping ) == 0 && arrayFindNoCase(
+					rule.methods,
+					arguments.method
+				)
+			)
+				return rule;
+		}
+		return {};
+	}
+	function finishRequestTimings( required struct state, string status = "ok" ){
+		try {
+			if ( !arguments.state.keyExists( "timings" ) ) return;
+			for ( var token in arguments.state.handlerTokens )
+				arguments.state.timings.finish( token, arguments.status );
+			arguments.state.handlerTokens = [];
+			if ( arguments.state.keyExists( "renderToken" ) ) {
+				arguments.state.timings.finish( arguments.state.renderToken, arguments.status );
+				arguments.state.delete( "renderToken" );
+			}
+		} catch ( any unavailable ) {
+		}
+	}
+	function getRequestTimings(){
+		var scope = getScope();
+		if ( scope.keyExists( "requestState" ) && scope.requestState.keyExists( "timings" ) )
+			return scope.requestState.timings;
+		return javacast( "null", "" );
+	}
+
 	function percentageEligible(
 		required string key,
 		required string opaqueId,
@@ -168,6 +361,7 @@ component {
 			return;
 		}
 		try {
+			finishRequestTimings( current.requestState, arguments.timedOut ? "deadline_exceeded" : "ok" );
 			if ( current.requestState.keyExists( "span" ) ) {
 				var span = current.requestState.span;
 				if ( !span.isFinished() ) {
@@ -455,9 +649,15 @@ component {
 		result[ "enabled" ] = variables.settings.enableDeliveryDiagnostics;
 		return result;
 	}
-	function newRequestTimings(){
-		return new RequestTimings( this, variables.settings.requestTimingNames );
+	function newRequestTimings( boolean automatic = false ){
+		var names = arguments.automatic ? [ "handler", "render" ] : [];
+		for ( var name in variables.settings.requestTimingNames ) {
+			// RequestTimings owns validation and deduplication for both manual and automatic names.
+			if ( !isNull( name ) ) names.append( name );
+		}
+		return new RequestTimings( this, names, 64, arguments.automatic );
 	}
+
 	/** Consumer supplies a supported pool adapter. Never inspect engine internals or JDBC credentials. */
 	function captureDatabasePool( required string name, required function sample ){
 		if ( !variables.settings.enableMetrics || !variables.settings.databasePoolNames.find( arguments.name ) ) {
@@ -572,7 +772,29 @@ component {
 			)
 		)
 			return arguments.callback();
-		return new Dependency( this ).run( argumentCollection = arguments );
+		var scope = {};
+		try {
+			scope = getScope();
+		} catch ( any unavailable ) {
+			return arguments.callback();
+		}
+		if ( scope.keyExists( "dependencyObservations" ) && scope.dependencyObservations.find( arguments.name ) )
+			return arguments.callback();
+		var classifier = arguments.classify;
+		if ( !isCustomFunction( classifier ) && ( !isSimpleValue( classifier ) || len( classifier ) ) ) {
+			var descriptor = classifier;
+			classifier     = function( result, failure ){
+				return variables.adapterResolver.call(
+					descriptor,
+					"classify",
+					{
+						"result"  : isNull( arguments.result ) ? javacast( "null", "" ) : arguments.result,
+						"failure" : isNull( arguments.failure ) ? javacast( "null", "" ) : arguments.failure
+					}
+				);
+			};
+		}
+		return new Dependency( this ).run( arguments.name, arguments.callback, classifier );
 	}
 
 	function withOperation(
@@ -1092,6 +1314,12 @@ component {
 		return variables.transport.flush( arguments.timeoutMilliseconds );
 	}
 	function shutdown( numeric timeoutMilliseconds = 2000 ){
+		if ( !variables.closed.compareAndSet( false, true ) ) return true;
+		variables.collectors.shutdown();
+		try {
+			if ( !isNull( variables.queryAdapterShutdown ) ) variables.queryAdapterShutdown();
+		} catch ( any unavailable ) {
+		}
 		if ( !isNull( variables.nativeQueryListener ) ) {
 			createObject( "java", "ortus.boxlang.runtime.BoxRuntime" )
 				.getInstance()
