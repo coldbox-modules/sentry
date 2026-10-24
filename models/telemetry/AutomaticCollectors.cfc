@@ -79,14 +79,7 @@ component {
 					variables.telemetry.deliveryDiagnostics();
 					return true;
 				} ) && success;
-			for (
-				var kind in [
-					"queueWorkers",
-					"databaseQueues",
-					"requestExecutors",
-					"databasePools"
-				]
-			) {
+			for ( var kind in [ "queues", "requestExecutors", "databasePools" ] ) {
 				var definitions = variables.settings[ kind ];
 				for ( var i = 1; i <= min( 32, definitions.len() ); i++ ) {
 					if ( !canCollect() ) break;
@@ -132,29 +125,6 @@ component {
 			"kind"    : collectKind,
 			"options" : duplicate( config.options ?: {} )
 		};
-		if ( collectKind == "databaseQueues" ) {
-			var factory = function(){
-				if ( !config.keyExists( "queryFactory" ) ) return variables.resolver.resolve( "QueryBuilder@qb" );
-				return variables.resolver.call(
-					config.queryFactory,
-					"newQuery",
-					{ "context" : context }
-				);
-			};
-			var adapter  = new DatabaseQueueHealth( factory, config.table ?: "cbq_jobs" );
-			var sample   = {};
-			var observed = variables.telemetry.captureQueueWorkerHealth( config.name, function(){
-				sample = adapter.snapshot( config.queue ?: config.name );
-				return sample;
-			} );
-			if ( observed && canCollect() )
-				variables.telemetry.captureQueueMetrics(
-					config.queue ?: config.name,
-					sample.depth,
-					sample.oldestAgeSeconds
-				);
-			return observed;
-		}
 		var callback = function(){
 			return variables.resolver.call(
 				config.adapter,
@@ -162,8 +132,7 @@ component {
 				{ "context" : context }
 			);
 		};
-		if ( collectKind == "queueWorkers" )
-			return variables.telemetry.captureQueueWorkerHealth( config.name, callback );
+		if ( collectKind == "queues" ) return variables.telemetry.captureQueueHealth( config.name, callback );
 		if ( collectKind == "requestExecutors" )
 			return variables.telemetry.captureRequestExecutor( config.name, callback );
 		if ( collectKind == "databasePools" )

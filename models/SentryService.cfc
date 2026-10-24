@@ -318,6 +318,12 @@ component accessors=true singleton threadSafe {
 	function requestExecutorDiagnostics(){
 		return variables.observability.requestExecutorDiagnostics( argumentCollection = arguments );
 	}
+	function captureQueueHealth(){
+		return variables.observability.captureQueueHealth( argumentCollection = arguments );
+	}
+	function queueHealthDiagnostics(){
+		return variables.observability.queueHealthDiagnostics( argumentCollection = arguments );
+	}
 	function captureQueueWorkerHealth(){
 		return variables.observability.captureQueueWorkerHealth( argumentCollection = arguments );
 	}

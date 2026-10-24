@@ -131,8 +131,11 @@ component extends="testbox.system.BaseSpec" {
 					}
 				},
 				skip = function(){
-					var source = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QB_SOURCE" );
-					return isNull( source ) || !len( source );
+					var source    = createObject( "java", "java.lang.System" ).getenv( "SENTRY_QB_SOURCE" );
+					var cbqSource = createObject( "java", "java.lang.System" ).getenv( "SENTRY_CBQ_SOURCE" );
+					return isNull( source ) || !len( source ) || isNull( cbqSource ) || !len( cbqSource ) || !fileExists(
+						cbqSource & "/models/Telemetry/DatabaseQueueSnapshot.cfc"
+					);
 				}
 			);
 

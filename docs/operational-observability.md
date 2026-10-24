@@ -150,37 +150,37 @@ One callback invocation represents one logical dependency call, including any re
 
 The wrapper emits `dependency.calls`, `dependency.duration` (milliseconds) and optional `dependency.retries` distributions, with fixed dependency name/outcome and optional HTTP status class/circuit state. Duration covers the callback, excluding telemetry setup, classification and export. Circuit state describes the observed call; it is not a continuously sampled breaker gauge. An `app.dependency` span follows existing sampling. Existing `withHttpSpan` remains the transport span/propagation mechanism; wrap it inside this logical dependency observation where appropriate, without adding a second HTTP span. Results, bodies, exception messages and URLs never become dependency metric labels. Unconfigured names or disabled metrics run the callback directly without classification or observation.
 
-## Queue worker health
+## Queue health
 
 ```cfml
 // moduleSettings.sentry
-queueWorkerNames: [ "mail" ]
+queueNames: [ "mail" ]
 
 // Choose a provider adapter explicitly. This example uses the adapter shipped by cbq.
-workerAdapter = wirebox.getInstance( "WorkerHealthAdapter@cbq" );
-sentry.captureQueueWorkerHealth( "mail", function(){
-    return workerAdapter.sample( { options: { pool: "outbound" } } );
+queueAdapter = wirebox.getInstance( "QueueHealthAdapter@cbq" );
+sentry.captureQueueHealth( "mail", function(){
+    return queueAdapter.sample( { options: { pool: "outbound" } } );
 } );
 
 // Or call another queue provider's supported snapshot API:
-sentry.captureQueueWorkerHealth( "mail", function(){
+sentry.captureQueueHealth( "mail", function(){
     return otherQueueProvider.workerSnapshot();
 } );
-health = sentry.queueWorkerDiagnostics( "mail" );
+health = sentry.queueHealthDiagnostics( "mail" );
 ```
 
-The cbq adapter emits configured worker concurrency and active executions from executor statistics when the executor advertises task-method support. Its current executor capacity is not an activity count. An unavailable/uninitialized executor leaves active executions absent; these measurements do not prove that workers are alive. A provider snapshot may additionally supply actual `activeWorkers`, `lastHeartbeatAt` (JVM-compatible Unix seconds), `runnable`, `delayed`, `reserved`, `staleReservations`, and cumulative `retries`/`exhausted`. Fields map to `queue.workers.configured`, `queue.workers.active`, `queue.executions.active`, `queue.worker.heartbeat_age` (seconds), `queue.backlog.runnable`, `.delayed`, `.reserved`, `queue.reservations.stale`, `queue.retries.total`, and `queue.exhausted.total`, labeled only by configured `worker.name`. A heartbeat must come from real worker activity; zero/absent/future heartbeat timestamps are omitted. A successful poll does not manufacture a worker heartbeat.
+The cbq queue adapter combines provider queue measurements with configured worker concurrency and active executions from executor statistics when the executor advertises task-method support. Its current executor capacity is not an activity count. An unavailable/uninitialized executor leaves active executions absent; these measurements do not prove that workers are alive. A provider snapshot may additionally supply actual `activeWorkers`, `lastHeartbeatAt` (JVM-compatible Unix seconds), `runnable`, `delayed`, `reserved`, `staleReservations`, and cumulative `retries`/`exhausted`. Fields map to `queue.workers.configured`, `queue.workers.active`, `queue.executions.active`, `queue.worker.heartbeat_age` (seconds), `queue.backlog.runnable`, `.delayed`, `.reserved`, `queue.reservations.stale`, `queue.retries.total`, and `queue.exhausted.total`, labeled by the configured `queue.name`. A heartbeat must come from real worker activity; zero/absent/future heartbeat timestamps are omitted. A successful poll does not manufacture a worker heartbeat.
 
 Only available finite nonnegative numeric fields are emitted. Cumulative retry/exhaustion gauges reset with their provider; compute deltas and handle resets. They differ from existing per-attempt and terminal-hook counters. Choose one producer for each series. Failed/empty snapshots emit no fabricated zeros and leave the last successful timestamp unchanged; read diagnostics to detect stale polling. Manual capture creates no polling threads. The optional automatic sampler is described below; neither mode mutates queues or captures job IDs/payloads.
 
-The optional cbq database-provider adapter separates pending work from delayed work and expired reservations:
+The cbq adapter asks its configured provider for queue health. Its database provider owns the table, datasource and aggregate query; these are not Sentry settings. Older manual integrations can still use the optional compatibility facade:
 
 ```cfml
 queueHealth = new sentry.models.telemetry.DatabaseQueueHealth(
     queryFactory = function(){ return wirebox.getInstance( "QueryBuilder@qb" ); },
     table = "cbq_jobs"
 );
-sentry.captureQueueWorkerHealth( "mail", function(){
+sentry.captureQueueHealth( "mail", function(){
     return queueHealth.snapshot( "mail" );
 } );
 ```
@@ -203,14 +203,12 @@ Each case creates a uniquely named table in the dedicated database and drops it 
 
 ## Configuration-driven automatic collection
 
-Manual APIs remain available. Configure automaticCollectors.enabled with enableMetrics and a valid DSN to start one background sampler per service. Partial automaticCollectors overrides inherit defaults. Settings are applied when the service/module starts; restart the service after changing adapter configuration.
+Manual APIs remain available. Enable metrics, configure a valid DSN, and enable one periodic sampler. Queue collection has **one** provider-neutral setting: `automaticCollectors.queues`. Each queue adapter supplies the fields its provider supports; worker measurements, backlog, age and lease health do not require separate collectors.
 
 ```cfml
 moduleSettings.sentry = {
     DSN: getSystemSetting( "SENTRY_DSN", "" ),
     enableMetrics: true,
-    enableRequestTracing: true,
-    tracesSampleRate: 0.1,
     enableRequestSaturation: true,
     enableAutomaticRequestTimings: true,
     publishServerTiming: false,
@@ -219,63 +217,47 @@ moduleSettings.sentry = {
         intervalSeconds: 60,
         runtime: true,
         requestSaturation: true,
-        queueWorkers: [ { name: "mail", adapter: "WorkerHealthAdapter@cbq", options: { pool: "mail" } } ],
-        databaseQueues: [ {
-            name: "mail", queue: "mail", table: "cbq_jobs",
-            queryFactory: "MailQueueQueries"
+        queues: [ {
+            // One fixed logical queue label, independent of provider identifiers.
+            name: "mail",
+            // Explicit provider-owned implementation; there is no default provider.
+            adapter: "QueueHealthAdapter@cbq",
+            // Adapter-specific selection. cbq derives its provider and queues from this pool.
+            options: { pool: "outbound" }
         } ],
         requestExecutors: [ { name: "http", adapter: "HttpExecutorSnapshot" } ],
-        databasePools: [ { name: "primary", adapter: function( context ) {
-            return poolAdapter.snapshot();
-        } } ]
-    },
-    dependencyAdapters: [ {
-        name: "mail", mapping: "MailClient", methods: [ "send" ],
-        classify: "MailOutcomeClassifier"
-    } ]
+        databasePools: [ { name: "primary", adapter: "PrimaryPoolSnapshot" } ]
+    }
 };
 ```
 
-The fixed delay starts after the first interval and follows the end of each cycle. It defaults to 60 seconds and permits integer intervals from 1 through 3600 seconds. Cycles cannot overlap; a slow adapter delays the next cycle rather than creating more threads. Keep callbacks bounded and configure query/network timeouts in consumer adapters. Shutdown interrupts the owned executor and prevents dispatching later adapters; an already running callback may take time to return. The sampler never inherits the caller's active trace. When ColdBox is available, its context-aware Runnable proxy establishes the engine application context for named datasources and releases Adobe JDBC thread state after each run. It continues other collectors after a failed adapter and retains only bounded process-local runs/failures/skipped/lastSuccessAt/lastFailureAt diagnostics, available through sentry.automaticCollectorDiagnostics(). The diagnostics do not contain callback results or exception messages and are not emitted recursively as telemetry.
+A different queue provider supplies a different adapter or callback, with its own options. A backlog-only adapter can return `{depth:0}`; no worker fields are required. A combined snapshot can return `{depth:7,oldestAgeSeconds:15,configuredWorkers:4,activeExecutions:2,runnable:5,delayed:2,reserved:1}`. Only measured finite nonnegative fields are emitted. Supported fields include `depth`, `oldestAgeSeconds`, `configuredWorkers`, `activeWorkers`, `activeExecutions`, `lastHeartbeatAt`, `runnable`, `delayed`, `reserved`, `staleReservations`, `retries` and `exhausted`. All automatic queue series use the fixed `queue.name` label. Missing capabilities remain absent; a failed snapshot records a failed poll instead of fake zeros.
 
-Runtime gauges, request saturation, worker activity, queue health, request executors and database pools use the existing collection APIs. Database queues also emit queue.depth and queue.oldest_age for unclaimed pending work (runnable plus delayed); claimed work stays in the separate reserved/stale series. Missing or failed measurements never fabricate zeros. deliveryDiagnostics:true polls local receipts without sending delivery-health metrics through the same transport. Request saturation still requires enableRequestSaturation; unsupported pool/executor fields remain absent.
+The former automatic `queueWorkers` and `databaseQueues` settings are replaced by `queues`; they are not aliases or additional collector types. There is no SQL builder, table name, datasource, default queue provider or cbq schema in Sentry's automatic collection path. Those choices belong to the selected adapter/provider. Configured queue names extend the bounded `queueNames` allowlist. Worker and backlog data are sampled once per definition, with a shared `queueHealthDiagnostics(name)` freshness/failure record. `captureQueueHealth(name,callback)` uses the same snapshot contract for explicit manual collection. Legacy manual worker APIs and their `worker.name` labels remain available for existing integrations.
 
-Each adapter group processes at most 32 definitions. Valid configured names extend the existing bounded label allowlists automatically; explicit manual names are retained first. Worker and database-queue definitions share the queueWorkerNames budget. Use one producer for each metric series. Manual capture calls are still valid, but calling them alongside an automatic producer intentionally emits an additional sample. sentry.collectAutomaticMetrics() runs a cycle explicitly through the same non-overlap guard; sentry.startAutomaticCollectors() is idempotent. Standalone services can use callbacks; WireBox mappings require an injector (ColdBox supplies it automatically).
+The fixed delay starts after the first interval and follows the end of each cycle. It defaults to 60 seconds, permitting integer intervals from 1 through 3600. Cycles cannot overlap; slow adapters delay later cycles. Keep callbacks bounded and configure query/network timeouts in the provider. Shutdown prevents dispatching later adapters; an already-running callback may take time to return. ColdBox's context-aware Runnable establishes the engine application context for named datasources and releases Adobe JDBC thread state. The sampler isolates/restores trace scope, continues after adapter failures, and retains bounded process-local diagnostics through `automaticCollectorDiagnostics()`. It does not send its own failure details recursively through telemetry.
+
+Each group processes at most 32 definitions. Partial overrides inherit defaults. `requestSaturation` also requires `enableRequestSaturation`. `deliveryDiagnostics:true` polls local receipts. Avoid multiple producers for the same series. `collectAutomaticMetrics()` shares the non-overlap guard; `startAutomaticCollectors()` is idempotent. Restart the service after changing configuration.
 
 ### Callback and WireBox adapter contracts
 
-An adapter can be a callback, a WireBox mapping ID, an object implementing the contract, or a descriptor such as { mapping: "MailQueueQueries", method: "newQuery" }. Descriptors allow an explicit compatible method. Instances are resolved lazily; the module does not cache consumer builders or pools.
+Adapters can be callbacks, WireBox mapping IDs, compatible objects, or `{mapping,method}` descriptors. Mappings are resolved lazily. Snapshot context contains the fixed `name`, collector `kind` and a copy of the definition's `options` struct. Options never become metric attributes.
 
-| Adapter | Callback arguments / default interface method | Result |
+| Adapter | Callback / interface method | Result |
 | --- | --- | --- |
-| Worker, executor or pool snapshot | callback(context) / ISnapshotAdapter.sample(context) | Supported numeric fields documented above |
-| Database query factory | callback(context) / IQueryFactory.newQuery(context) | Fresh qb builder with correct datasource/grammar |
-| Dependency classifier | callback(result,failure) / IDependencyClassifier.classify(result,failure) | Bounded outcome/statusCode/retryCount/circuitState fields |
-| Query tracing configuration | callback(context) / IQueryAdapter.configure(context) | Built-in adapter mode, or {mode:"custom",shutdown:callback} |
+| Queue, executor or pool snapshot | callback(context) / ISnapshotAdapter.sample(context) | Supported numeric fields |
+| Dependency classifier | callback(result,failure) / IDependencyClassifier.classify(result,failure) | Bounded outcome/status/retry/circuit fields |
+| Query tracing setup | callback(context) / IQueryAdapter.configure(context) | Built-in mode or `{mode:"custom",shutdown:callback}` |
 
-Interfaces are under sentry.models.telemetry.adapters. Snapshot/query-factory context contains the fixed name, collector kind and an options struct copied from the definition (empty by default). A query tracing adapter receives context.telemetry and context.applicationName. Existing queryAdapter values none, qb, lucee, auto and boxlang keep their behavior. A custom configuration callback/mapping can install its own query hooks and return custom with a shutdown callback to remove them; returning qb/auto selects the existing integrations. Invalid or unavailable custom configuration selects none. Install any required adapter mappings before module startup. This queryAdapter controls tracing; a databaseQueues queryFactory controls which builder reads queue statistics.
+Interfaces live under `sentry.models.telemetry.adapters`. Compatible provider adapters need not import Sentry's interface or depend on Sentry. Standalone services can use callbacks/objects; mapping IDs require an injector (ColdBox supplies it). Query tracing configuration receives `context.telemetry` and `context.applicationName`; built-in `queryAdapter` values `none`, `qb`, `lucee`, `auto` and `boxlang` retain their behavior. Custom setup can install query hooks and return a shutdown callback. This controls query tracing, independently of queue snapshots; there is no queue-specific query factory setting.
 
-For example, the WireBox mapping MailQueueQueries can implement:
+### cbq adapter ownership
 
-```cfml
-component implements="sentry.models.telemetry.adapters.IQueryFactory" {
-    property name="wirebox" inject="wirebox";
-    any function newQuery( required struct context ) {
-        return variables.wirebox.getInstance( "QueryBuilder@qb" )
-            .setDefaultOptions( { datasource: "mail" } );
-    }
-}
-```
+The optional cbq integration lives in cbq as `QueueHealthAdapter@cbq` and requires explicit `options.pool`. It resolves the actual pool each time, reads its provider and queue selection, and combines worker activity with any supported `getQueueHealth(queue)` provider snapshot. An optional `options.queue` overrides the selected queue(s). Otherwise the pool's queue name/array/wildcard selection is used. cbq's database provider applies its own configured table and query options/datasource. Other cbq providers without queue-snapshot support still report supported worker measurements, without invented backlog or heartbeat values.
 
-The callback equivalent is queryFactory:function(context){ return wirebox.getInstance("QueryBuilder@qb").setDefaultOptions({datasource:"mail"}); }. The sampler reads only the configured queue/table. Every queueWorkers definition requires an explicit adapter; Sentry does not choose a queue provider. Its optional options struct is copied into context.options for the adapter, never into metric attributes. The cbq example explicitly selects WorkerHealthAdapter@cbq and passes its actual pool name in options.pool. Other providers supply their own sample(context) callback, mapping or object. Polling does not generate worker heartbeats.
+Worker measurements describe the entire pool, including when `options.queue` narrows the backlog selection. Prefer one collector per pool for combined measurements; separate per-queue backlog-only adapters should avoid duplicating shared pool activity.
 
-### Worker adapters and provider ownership
-
-`queueWorkers` accepts `{name,adapter,options}` definitions. There is no implicit provider or `pool` shortcut. A callback, mapping, object or `{mapping,method}` descriptor must return the generic supported worker fields. Providers own their pool selection and measurement implementation.
-
-The optional cbq integration lives in **cbq**, in `WorkerHealthAdapter@cbq`. It follows the `sample(context)` snapshot contract without importing Sentry or requiring Sentry as a dependency. It requires an explicit `context.options.pool`; it never uses the metric label or a default queue to choose a pool. The mapping must be present in the installed cbq version; older releases without it cannot provide the cbq snapshot. Configure another adapter or use a callback when that mapping is unavailable.
-
-The existing manual `captureCBQWorkerHealth(name,pool)` API remains a compatibility facade. It resolves cbq's optional adapter through WireBox and calls `samplePool(pool)`; provider sampling logic no longer lives in Sentry. A missing adapter fails open and records a sampling failure rather than emitting fake zeros. Prefer the generic `captureQueueWorkerHealth(name,callback)` API for new manual integrations.
+The installed cbq version must contain the adapter; existing releases do not gain it automatically. `WorkerHealthAdapter@cbq` remains a compatibility alias. Sentry's legacy `captureCBQWorkerHealth(name,pool)` and `DatabaseQueueHealth(queryFactory,table)` entrypoints delegate to cbq's optional implementations. New integrations should use the unified adapter contract. Neither module requires the other as an installed dependency.
 
 ### Automatic dependency and request instrumentation
 

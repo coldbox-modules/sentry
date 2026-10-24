@@ -29,22 +29,31 @@ component {
 			},
 			"executor.name"
 		);
+		var queueFields = {
+			"configuredWorkers" : { "name" : "queue.workers.configured", "unit" : "none" },
+			"activeWorkers"     : { "name" : "queue.workers.active", "unit" : "none" },
+			"activeExecutions"  : { "name" : "queue.executions.active", "unit" : "none" },
+			"lastHeartbeatAt"   : { "name" : "queue.worker.heartbeat_age", "unit" : "second" },
+			"runnable"          : { "name" : "queue.backlog.runnable", "unit" : "none" },
+			"delayed"           : { "name" : "queue.backlog.delayed", "unit" : "none" },
+			"reserved"          : { "name" : "queue.backlog.reserved", "unit" : "none" },
+			"staleReservations" : { "name" : "queue.reservations.stale", "unit" : "none" },
+			"retries"           : { "name" : "queue.retries.total", "unit" : "none" },
+			"exhausted"         : { "name" : "queue.exhausted.total", "unit" : "none" },
+			"depth"             : { "name" : "queue.depth", "unit" : "none" },
+			"oldestAgeSeconds"  : { "name" : "queue.oldest_age", "unit" : "second" }
+		};
 		variables.workers = new HealthSampler(
 			this,
 			variables.settings.queueWorkerNames,
-			{
-				"configuredWorkers" : { "name" : "queue.workers.configured", "unit" : "none" },
-				"activeWorkers"     : { "name" : "queue.workers.active", "unit" : "none" },
-				"activeExecutions"  : { "name" : "queue.executions.active", "unit" : "none" },
-				"lastHeartbeatAt"   : { "name" : "queue.worker.heartbeat_age", "unit" : "second" },
-				"runnable"          : { "name" : "queue.backlog.runnable", "unit" : "none" },
-				"delayed"           : { "name" : "queue.backlog.delayed", "unit" : "none" },
-				"reserved"          : { "name" : "queue.backlog.reserved", "unit" : "none" },
-				"staleReservations" : { "name" : "queue.reservations.stale", "unit" : "none" },
-				"retries"           : { "name" : "queue.retries.total", "unit" : "none" },
-				"exhausted"         : { "name" : "queue.exhausted.total", "unit" : "none" }
-			},
+			queueFields,
 			"worker.name"
+		);
+		variables.queues = new HealthSampler(
+			this,
+			variables.settings.queueNames,
+			queueFields,
+			"queue.name"
 		);
 		variables.delivery                = new DeliveryDiagnostics( variables.settings.maxPendingEnvelopes );
 		variables[ "scope" ]              = createObject( "java", "java.lang.ThreadLocal" ).init();
@@ -91,6 +100,7 @@ component {
 			"requestExecutorNames"           : [],
 			"dependencyNames"                : [],
 			"queueWorkerNames"               : [],
+			"queueNames"                     : [],
 			"queryAdapter"                   : "none",
 			"enableQueueTracing"             : false,
 			"enableQueueJobMetrics"          : false,
@@ -117,8 +127,7 @@ component {
 				runtime             : true,
 				requestSaturation   : true,
 				deliveryDiagnostics : false,
-				queueWorkers        : [],
-				databaseQueues      : [],
+				queues              : [],
 				requestExecutors    : [],
 				databasePools       : []
 			},
@@ -215,14 +224,7 @@ component {
 			if ( !isBoolean( variables.settings.automaticCollectors[ flag ] ) )
 				variables.settings.automaticCollectors[ flag ] = collectorDefaults[ flag ];
 		}
-		for (
-			var kind in [
-				"queueWorkers",
-				"databaseQueues",
-				"requestExecutors",
-				"databasePools"
-			]
-		) {
+		for ( var kind in [ "queues", "requestExecutors", "databasePools" ] ) {
 			if ( !isArray( variables.settings.automaticCollectors[ kind ] ) )
 				variables.settings.automaticCollectors[ kind ] = [];
 		}
@@ -262,8 +264,7 @@ component {
 				} );
 		}
 		addAdapterNames( "dependencyNames", variables.dependencyRules );
-		addAdapterNames( "queueWorkerNames", variables.settings.automaticCollectors.queueWorkers );
-		addAdapterNames( "queueWorkerNames", variables.settings.automaticCollectors.databaseQueues );
+		addAdapterNames( "queueNames", variables.settings.automaticCollectors.queues );
 		addAdapterNames( "requestExecutorNames", variables.settings.automaticCollectors.requestExecutors );
 		addAdapterNames( "databasePoolNames", variables.settings.automaticCollectors.databasePools );
 	}
@@ -736,6 +737,13 @@ component {
 	}
 	function requestExecutorDiagnostics( required string name ){
 		return variables.executors.diagnostics( arguments.name );
+	}
+	function captureQueueHealth( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.owner.getEnabled() ) return false;
+		return variables.queues.capture( argumentCollection = arguments );
+	}
+	function queueHealthDiagnostics( required string name ){
+		return variables.queues.diagnostics( arguments.name );
 	}
 	function captureQueueWorkerHealth( required string name, required function sample ){
 		if ( !variables.settings.enableMetrics || !variables.owner.getEnabled() ) return false;

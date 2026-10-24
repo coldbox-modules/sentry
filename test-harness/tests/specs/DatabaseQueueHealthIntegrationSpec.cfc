@@ -58,7 +58,7 @@ component extends="testbox.system.BaseSpec" {
 					throw( type = "QueueHealthFixtureCleanupFailed", message = errors.toList( "; " ) );
 			} );
 
-			it( "automatically samples actual cbq workers and real database health through a WireBox query factory", function(){
+			it( "samples worker activity and database backlog through a single provider-owned queue adapter", function(){
 				startPool();
 				var job = publish( "block" );
 				expect(
@@ -76,19 +76,11 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 1,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : [
+						queues            : [
 							{
 								name    : "health",
-								adapter : "WorkerHealthAdapter@cbq",
+								adapter : "QueueHealthAdapter@cbq",
 								options : { pool : variables.key }
-							}
-						],
-						databaseQueues : [
-							{
-								name         : "health",
-								queue        : "health",
-								table        : variables.table,
-								queryFactory : "AutomaticLiveQueries"
 							}
 						]
 					}
@@ -117,6 +109,19 @@ component extends="testbox.system.BaseSpec" {
 				} );
 			} );
 
+			it( "uses provider-owned table and datasource settings for multiple queues and wildcard snapshots", function(){
+				seed( { availableDate : epoch() } );
+				seed( { queue : "other", availableDate : epoch() + 3600 } );
+				seed( { queue : "mail' OR 1=1 --", availableDate : epoch() } );
+				var provider = variables.config.getConnection( variables.key ).getProvider();
+				var selected = provider.getQueueHealth( [ "health", "other" ] );
+				expect( selected.depth ).toBe( 2 );
+				expect( selected.runnable ).toBe( 1 );
+				expect( selected.delayed ).toBe( 1 );
+				expect( provider.getQueueHealth( "*" ).depth ).toBe( 3 );
+				expect( provider.getQueueHealth( [ "*" ] ).depth ).toBe( 3 );
+				expect( provider.getQueueHealth( "mail' OR 1=1 --" ).depth ).toBe( 1 );
+			} );
 			it( "cleans database and worker registries even when draining reports a failure", function(){
 				startPool();
 				var job = publish( "block" );

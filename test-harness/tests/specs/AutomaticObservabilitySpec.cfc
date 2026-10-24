@@ -167,7 +167,7 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 3600,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : [
+						queues            : [
 							{
 								name    : "blocked",
 								adapter : function( context ){
@@ -216,7 +216,7 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 3600,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : [
+						queues            : [
 							{
 								name    : "mail",
 								adapter : function( context ){
@@ -240,9 +240,9 @@ component extends="testbox.system.BaseSpec" {
 				var calls   = 0;
 				var service = makeService( {
 					automaticCollectors : {
-						enabled      : false,
-						runtime      : false,
-						queueWorkers : [
+						enabled : false,
+						runtime : false,
+						queues  : [
 							{
 								name    : "mail",
 								adapter : function( context ){
@@ -275,6 +275,72 @@ component extends="testbox.system.BaseSpec" {
 				expect( telemetry.$callLog( "gauge" ).gauge.len() ).toBe( 0 );
 			} );
 
+			it( "collects supported queue and worker fields together from one provider snapshot", function(){
+				var calls   = 0;
+				var service = makeService( {
+					automaticCollectors : {
+						enabled           : true,
+						intervalSeconds   : 3600,
+						runtime           : false,
+						requestSaturation : false,
+						queues            : [
+							{
+								name    : "mail",
+								adapter : function( context ){
+									expect( context.kind ).toBe( "queues" );
+									calls++;
+									return {
+										depth             : 7,
+										oldestAgeSeconds  : 15,
+										configuredWorkers : 4,
+										activeExecutions  : 2,
+										runnable          : 5,
+										delayed           : 2,
+										reserved          : 1,
+										privatePayload    : "PRIVATE"
+									};
+								}
+							}
+						]
+					}
+				} );
+				var telemetry = prepareMock( service.getObservability() );
+				telemetry.$( "gauge" );
+				service.collectAutomaticMetrics();
+				expect( calls ).toBe( 1 );
+				expect( service.queueHealthDiagnostics( "mail" ).lastSuccessAt ).toBeGT( 0 );
+				var samples = telemetry.$callLog( "gauge" ).gauge;
+				expect( samples.len() ).toBe( 7 );
+				for ( var sample in samples ) expect( sample[ 3 ][ "queue.name" ] ).toBe( "mail" );
+				expect( serializeJSON( samples ) ).toInclude( "queue.depth" );
+				expect( serializeJSON( samples ) ).toInclude( "queue.executions.active" );
+				expect( serializeJSON( samples ) ).notToInclude( "PRIVATE" );
+			} );
+			it( "accepts backlog-only providers without fabricating worker or age measurements", function(){
+				var service = makeService( {
+					automaticCollectors : {
+						enabled           : true,
+						intervalSeconds   : 3600,
+						runtime           : false,
+						requestSaturation : false,
+						queues            : [
+							{
+								name    : "remote",
+								adapter : function(){
+									return { depth : 0 };
+								}
+							}
+						]
+					}
+				} );
+				var telemetry = prepareMock( service.getObservability() );
+				telemetry.$( "gauge" );
+				service.collectAutomaticMetrics();
+				var samples = telemetry.$callLog( "gauge" ).gauge;
+				expect( samples.len() ).toBe( 1 );
+				expect( samples[ 1 ][ 1 ] ).toBe( "queue.depth" );
+				expect( samples[ 1 ][ 2 ] ).toBe( 0 );
+			} );
 			it( "requires an explicit worker adapter rather than assuming cbq from a pool setting", function(){
 				var service = makeService( {
 					automaticCollectors : {
@@ -282,7 +348,7 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 3600,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : [ { name : "mail", pool : "not-a-default-provider" } ]
+						queues            : [ { name : "mail", pool : "not-a-default-provider" } ]
 					}
 				} );
 				var telemetry = prepareMock( service.getObservability() );
@@ -303,13 +369,13 @@ component extends="testbox.system.BaseSpec" {
 						enabled         : true,
 						intervalSeconds : 3600,
 						runtime         : false,
-						queueWorkers    : [
+						queues          : [
 							{
 								name    : "mail",
 								pool    : "ignored-legacy-shortcut",
 								options : { pool : "outbound", token : "PRIVATE" },
 								adapter : function( context ){
-									expect( context.kind ).toBe( "queueWorkers" );
+									expect( context.kind ).toBe( "queues" );
 									expect( context.options.pool ).toBe( "outbound" );
 									calls++;
 									return { activeWorkers : 0 };
@@ -330,7 +396,7 @@ component extends="testbox.system.BaseSpec" {
 				expect( payload ).toInclude( "queue.workers.active" );
 				expect( payload ).notToInclude( "PRIVATE" );
 				expect(
-					service.captureQueueWorkerHealth( "mail", function(){
+					service.captureQueueHealth( "mail", function(){
 						return { activeWorkers : 2 };
 					} )
 				).toBeTrue();
@@ -344,7 +410,7 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 3600,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : [
+						queues            : [
 							{
 								name    : "bad",
 								adapter : function( context ){
@@ -374,7 +440,7 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 1,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : [
+						queues            : [
 							{
 								name    : "mail",
 								adapter : function( context ){
@@ -407,7 +473,7 @@ component extends="testbox.system.BaseSpec" {
 						enabled         : true,
 						intervalSeconds : 1,
 						runtime         : false,
-						queueWorkers    : [
+						queues          : [
 							{
 								name    : "mail",
 								adapter : function( context ){
@@ -565,7 +631,7 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 3600,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : entries
+						queues            : entries
 					}
 				} );
 				var telemetry = prepareMock( service.getObservability() );

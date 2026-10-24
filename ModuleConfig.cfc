@@ -116,8 +116,10 @@ component {
 			"dependencyAdapters"              : [],
 			// Writable WireBox AOP generation mapping, used only when this module registers the Mixer listener.
 			"dependencyAdapterGenerationPath" : "/coldbox/system/aop/tmp",
-			// Fixed worker metric names; automatic queue definitions add their names to the bounded allowlist.
+			// Fixed names for the legacy manual worker-health API.
 			"queueWorkerNames"                : [],
+			// Fixed names for manual queue-health snapshots; configured queues add their names automatically.
+			"queueNames"                      : [],
 			// Fixed executor names; automatic requestExecutors definitions add their names.
 			"requestExecutorNames"            : [],
 			// Fixed pool names; automatic databasePools definitions add their names.
@@ -134,13 +136,10 @@ component {
 				// Poll local receipt state; never send delivery-health metrics through their own transport.
 				"deliveryDiagnostics" : false,
 				// Up to 32 {name,adapter:callback|mapping|{mapping,method},options:{...}} definitions. No default provider.
-				// Adapters follow ISnapshotAdapter.sample(context); context.options contains provider-specific configuration.
-				// Example: {name:"mail",adapter:"WorkerHealthAdapter@cbq",options:{pool:"mail"}} (requires cbq's adapter).
-				"queueWorkers"        : [],
-				// Up to 32 {name,queue,table,queryFactory} definitions. queue defaults to name; table to cbq_jobs.
-				// Emits pending depth/oldest age as well as runnable/delayed/lease health.
-				// queryFactory is callback(context), IQueryFactory.newQuery(context), or {mapping,method}; omitted uses QueryBuilder@qb.
-				"databaseQueues"      : [],
+				// One snapshot supplies supported backlog/depth/age/lease fields and worker activity; absent fields stay absent.
+				// Adapters follow sample(context); context.options is provider-specific configuration.
+				// Example: {name:"mail",adapter:"QueueHealthAdapter@cbq",options:{pool:"outbound"}} (requires cbq's adapter).
+				"queues"              : [],
 				// Up to 32 {name,adapter} definitions returning active/max/queued/rejected via callback(context) or ISnapshotAdapter.sample(context).
 				"requestExecutors"    : [],
 				// Up to 32 {name,adapter} definitions returning active/idle/max/waiters/timeouts via callback(context) or ISnapshotAdapter.sample(context).

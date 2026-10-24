@@ -1,6 +1,14 @@
 # Local operational-observability verification — October 24, 2026
 
-## Provider-owned worker adapter follow-up
+## Unified queue adapter follow-up
+
+The current configuration is one `automaticCollectors.queues` list, with explicit provider adapters returning whichever queue/worker fields they support. The former automatic worker/database groups are removed. Generic snapshots emit fixed `queue.name` labels with shared freshness/failure diagnostics; backlog-only providers need no worker fields. No automatic Sentry path selects cbq, constructs a SQL builder or chooses a jobs table/datasource. The cbq `QueueHealthAdapter` reads the pool/provider selection; its database provider owns the aggregate query and configured query options. Older manual APIs remain as compatibility entrypoints.
+
+Final local results: **137/137 Sentry specs plus 9/9 cbq adapter specs on each of Lucee 5.4.8.2, BoxLang 1.18.0+66 and Adobe 2023 update 25**, with zero failures/errors/skips. Evidence: `/tmp/sentry-unified-final-lucee5.json`, `/tmp/sentry-unified-final-boxlang.json`, `/tmp/sentry-unified-final-adobe2023.json` and the corresponding `/tmp/cbq-unified-final-*.json` files. The Sentry suite includes eleven actual PostgreSQL/cbq integration cases. One automatic definition now measures both real worker execution and database depth/age/lease state. New real queries verify provider-owned table/datasource options, multiple queues, wildcard selection and bound quote-bearing names. Native activity, unsupported fields, combined/backlog-only providers and preserved manual APIs are covered. The separate cbq hosted suite additionally tests its database snapshot against MySQL.
+
+Review found an optional facade test that now also needs cbq; its fixture guard is corrected. Adobe exposed a constructor/inline-callback compiler error; the provider now declares the factory and snapshot separately. After that failure, only the dedicated test database's leftover fixture tables were removed before the final reruns; final runs left zero tables. The disposable `sentry_queue_health_unified_20261024` database was removed after owned processes stopped, and local server settings/dependency links were restored. Installed application modules and the pre-existing PostgreSQL server were not changed. Formatting and whitespace checks passed. Current hosted results are recorded on the draft PRs; the earlier configurations/results below are historical.
+
+## Earlier provider-owned worker adapter follow-up
 
 Automatic `queueWorkers` now requires an explicit `adapter`, with provider configuration in `options`. Sentry no longer chooses cbq from a `pool` key. The optional cbq implementation lives in cbq as `WorkerHealthAdapter@cbq`, follows the `sample(context)` contract without a Sentry dependency, and requires `options.pool`. The existing manual cbq API delegates to that mapping; generic manual snapshot APIs remain available without cbq.
 
