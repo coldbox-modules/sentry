@@ -186,7 +186,7 @@ component {
 				registerBoxLangQueries( arguments.applicationName, variables.settings.databaseSystem ?: "other" );
 				variables.settings.queryAdapter = "boxlang";
 			} catch ( any unavailable ) {
-				variables.settings.queryAdapter = "qb";
+				variables.settings.queryAdapter = "none";
 			}
 		}
 		return variables.settings.queryAdapter;

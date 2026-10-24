@@ -94,7 +94,9 @@ component {
 			"queueMetricDestinations"         : [],
 			// Keep bounded, process-local envelope outcomes. Acceptance does not prove indexing.
 			"enableDeliveryDiagnostics"       : false,
-			// Query tracing: none/qb/lucee/auto/boxlang, callback(context), or mapping implementing IQueryAdapter.configure(context).
+			// Query tracing is off by default. auto/boxlang try native BoxLang hooks; unavailable hooks leave tracing off.
+			// qb is an explicit optional integration; lucee requires an application query listener.
+			// Also accepts callback(context) or a mapping implementing IQueryAdapter.configure(context).
 			"queryAdapter"                    : "none",
 			// Optional initial phase names/header order; measure()/begin() also accept ad hoc names without configuration.
 			// At most 32 distinct HTTP-safe names per instance. Automatic timing supplies handler/render.

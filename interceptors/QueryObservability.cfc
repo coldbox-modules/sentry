@@ -1,4 +1,4 @@
-/** qb fallback; one adapter produces each execution's span. */
+/** Explicitly selected qb integration; one adapter produces each execution's span. */
 component {
 
 	property name="sentry" inject="SentryService@sentry";

@@ -1,6 +1,6 @@
 # Observability and feedback for CFML and BoxLang
 
-All integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Use qb/cbq versions with the documented hooks (see the [upstream audit](observability-upstream-audit.md) for the inspected dependency versions). The operational additions described below remain unpublished until released.
+All integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Optional qb/cbq integrations require versions with the documented hooks (see the [upstream audit](observability-upstream-audit.md) for the inspected dependency versions). The operational additions described below remain unpublished until released.
 
 ## Server setup
 
@@ -11,6 +11,7 @@ moduleSettings.sentry = {
     release: "my-release",
     tracesSampleRate: 1,
     enableRequestTracing: true,
+    // Try native engine hooks; never infer an installed query library.
     queryAdapter: "auto",
     databaseSystem: "postgresql",
     enableQueueTracing: true,
@@ -42,6 +43,18 @@ sentry.withTraceContext( headers, function( root ) {
 
 ## Queries
 
+Query tracing observes executions; it does not supply a query builder or choose how your application accesses the database. No query library is required. `queryAdapter` defaults to `"none"`.
+
+| Setting | What it enables |
+| --- | --- |
+| `"none"` | No automatic query instrumentation. Manual `withQuerySpan` remains available. |
+| `"auto"` / `"boxlang"` | Complete native BoxLang query hooks when available; otherwise automatic query tracing stays off. There is no query-library fallback. |
+| `"lucee"` | Select the native application listener configured below. This setting does not install the listener. |
+| `"qb"` | Explicitly observe compatible qb execution events, only for applications choosing qb. |
+| Callback or WireBox mapping | Install your own execution hooks with `configure(context)`. Return `{mode:"custom",shutdown:callback}` for cleanup. |
+
+Custom setup receives `context.telemetry` and `context.applicationName`. It must install its integration; returning `"custom"` alone does not observe queries. Returning a built-in mode selects that explicit integration instead. This setup hook is separate from dependency method advice and periodic database-pool health snapshots.
+
 On Lucee 6+, compose your existing application listener:
 
 ```cfml
@@ -49,14 +62,15 @@ this.query.listener = sentry.createLuceeQueryListener(
     listener = existingListener,
     databaseSystem = "postgresql"
 );
-// Set queryAdapter="lucee" so qb does not produce a second span.
+// Select this explicitly installed native listener.
+// moduleSettings.sentry.queryAdapter = "lucee";
 ```
 
 Native global listeners are officially scoped to Lucee 6+ ([Lucee documentation](https://docs.lucee.org/recipes/query-listener.html)); older engines are not automatically enabled. Existing before/after/error returns and transformations are preserved. Each thread has a nesting stack; use the manual wrapper for asynchronous query modes whose callbacks do not execute on that thread.
 
-BoxLang auto selects application-scoped preQueryExecute/postQueryExecute/onQueryExecuteError only when the runtime exposes ON_QUERY_EXECUTE_ERROR. Earlier runtimes fall back to qb. The upstream hook includes PendingQuery identity, context, elapsed milliseconds, and the unchanged exception. Cached execution events include cached/dbtype and correlate with the same pending identity. The currently tested server runtime lacks that error event: successful native direct queries were exercised separately, but automatic configuration deliberately uses qb there. Connection acquisition/build failures occurring before native PRE remain a manual-wrapper boundary.
+BoxLang auto selects application-scoped preQueryExecute/postQueryExecute/onQueryExecuteError only when the runtime exposes ON_QUERY_EXECUTE_ERROR. Earlier runtimes leave automatic query tracing off. The upstream hook includes PendingQuery identity, context, elapsed milliseconds, and the unchanged exception. Cached execution events include cached/dbtype and correlate with the same pending identity. The currently tested server runtime lacks that error event: successful native direct queries were exercised separately, but automatic configuration deliberately stays disabled there. Connection acquisition/build failures occurring before native PRE remain a manual-wrapper boundary.
 
-qb's new onQBExecuteException closes the original preQBExecute span and preserves the database exception even if an observer fails. Pretend queries are skipped. Adobe CF and runtimes without complete native coverage use these hooks plus:
+When explicitly selected, qb's onQBExecuteException closes the original preQBExecute span and preserves the database exception even if an observer fails. Pretend queries are skipped. Adobe CF and runtimes without complete native coverage can use a custom integration or this library-independent manual wrapper:
 
 ```cfml
 result = sentry.withQuerySpan( sql, function( span ) {

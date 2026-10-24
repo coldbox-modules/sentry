@@ -538,7 +538,23 @@ component extends="testbox.system.BaseSpec" {
 				service.shutdown();
 				expect( stopped ).toBe( 1 );
 			} );
+			it( "does not assume a query library when native hooks are unavailable", function(){
+				for ( var mode in [ "auto", "boxlang" ] ) {
+					var service   = makeService( { queryAdapter : mode } );
+					var telemetry = prepareMock( service.getObservability() );
+					telemetry.$(
+						method   = "registerBoxLangQueries",
+						callback = function(){
+							throw( type = "UnavailableNativeQueryHooks" );
+						}
+					);
+					expect( telemetry.configureQueryInstrumentation( "test" ) ).toBe( "none" );
+					service.shutdown();
+				}
+			} );
 			it( "fails closed for an invalid query adapter while preserving built-in modes", function(){
+				var defaultService = makeService();
+				expect( defaultService.getObservability().configureQueryInstrumentation( "test" ) ).toBe( "none" );
 				var service = makeService( {
 					queryAdapter : function( context ){
 						throw( type = "PRIVATE" );
