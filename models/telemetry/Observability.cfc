@@ -747,17 +747,8 @@ component {
 	function captureCBQWorkerHealth( required string name, required any pool ){
 		var workerPool = arguments.pool;
 		return captureQueueWorkerHealth( arguments.name, function(){
-			var sample = { "configuredWorkers" : workerPool.getQuantity() };
-			try {
-				// ColdBox's unsupported getActiveCount fallback is zero; require the taskMethods capability.
-				var stats = workerPool.getExecutor().getStats();
-				if (
-					stats.keyExists( "features" ) && stats.features.keyExists( "taskMethods" ) && stats.features.taskMethods && stats.keyExists( "activeCount" )
-				)
-					sample[ "activeExecutions" ] = stats.activeCount;
-			} catch ( any unavailable ) {
-			}
-			return sample;
+			// Compatibility facade only. Provider-specific sampling belongs to the installed cbq adapter.
+			return variables.adapterResolver.resolve( "WorkerHealthAdapter@cbq" ).samplePool( workerPool );
 		} );
 	}
 

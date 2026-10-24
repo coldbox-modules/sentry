@@ -126,13 +126,12 @@ component {
 		var collectKind = arguments.kind;
 		if ( !config.keyExists( "name" ) || !isSimpleValue( config.name ) ) return false;
 		if ( !canCollect() ) return false;
-		var context = { "name" : config.name, "kind" : collectKind };
-		if ( collectKind == "queueWorkers" && config.keyExists( "pool" ) ) {
-			return variables.telemetry.captureCBQWorkerHealth(
-				config.name,
-				variables.resolver.resolve( "Config@cbq" ).getWorkerPool( config.pool )
-			);
-		}
+		if ( config.keyExists( "options" ) && !isStruct( config.options ) ) return false;
+		var context = {
+			"name"    : config.name,
+			"kind"    : collectKind,
+			"options" : duplicate( config.options ?: {} )
+		};
 		if ( collectKind == "databaseQueues" ) {
 			var factory = function(){
 				if ( !config.keyExists( "queryFactory" ) ) return variables.resolver.resolve( "QueryBuilder@qb" );

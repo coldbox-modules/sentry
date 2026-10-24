@@ -424,84 +424,51 @@ component extends="testbox.system.BaseSpec" {
 				expect( serializeJSON( variables.service.queueWorkerDiagnostics( "mail" ) ) ).notToInclude( "PRIVATE" );
 			} );
 
-			it( "uses actual cbq executor activity rather than configured capacity", function(){
+			it( "delegates the cbq compatibility API to its optional external adapter", function(){
 				var telemetry = prepareMock( variables.telemetry );
 				telemetry.$( "gauge" );
-				var pool = {
-					getQuantity : function(){
-						return 4;
-					},
-					getCurrentExecutorCount : function(){
-						return 4;
-					},
-					getExecutor : function(){
-						return {
-							getStats : function(){
-								return { features : { taskMethods : true }, activeCount : 1 };
-							}
-						};
-					}
-				};
-				expect( variables.service.captureCBQWorkerHealth( "mail", pool ) ).toBeTrue();
-				var calls = telemetry.$callLog( "gauge" ).gauge;
-				expect( calls.len() ).toBe( 2 );
-				var active = -1;
-				for ( var call in calls ) {
-					if ( call[ 1 ] == "queue.executions.active" ) active = call[ 2 ];
-				}
-				expect( active ).toBe( 1 );
-				expect( serializeJSON( calls ) ).notToInclude( "queue.workers.active" );
-			} );
-			it( "omits unsupported cbq executor activity and reads actual ColdBox executor stats", function(){
-				var telemetry = prepareMock( variables.telemetry );
-				telemetry.$( "gauge" );
-				expect(
-					variables.service.captureCBQWorkerHealth(
-						"mail",
-						{
-							getQuantity : function(){
-								return 4;
-							},
-							getExecutor : function(){
-								return {
-									getStats : function(){
-										return { features : { taskMethods : false }, activeCount : 0 };
-									}
-								};
-							}
+				var calls = 0;
+				telemetry.$property(
+					"adapterResolver",
+					"variables",
+					{
+						resolve : function( mapping ){
+							expect( mapping ).toBe( "WorkerHealthAdapter@cbq" );
+							return {
+								samplePool : function( pool ){
+									expect( pool.marker ).toBe( "PRIVATE" );
+									calls++;
+									return { configuredWorkers : 4, activeExecutions : 1 };
+								}
+							};
 						}
-					)
+					}
+				);
+				expect( variables.service.captureCBQWorkerHealth( "mail", { marker : "PRIVATE" } ) ).toBeTrue();
+				expect( calls ).toBe( 1 );
+				expect( telemetry.$callLog( "gauge" ).gauge.len() ).toBe( 2 );
+				expect( serializeJSON( telemetry.$callLog( "gauge" ) ) ).notToInclude( "PRIVATE" );
+			} );
+			it( "keeps generic manual sampling available when the optional cbq adapter is absent", function(){
+				var telemetry = prepareMock( variables.telemetry );
+				telemetry.$( "gauge" );
+				telemetry.$property(
+					"adapterResolver",
+					"variables",
+					{
+						resolve : function(){
+							throw( type = "MissingOptionalAdapter" );
+						}
+					}
+				);
+				expect( variables.service.captureCBQWorkerHealth( "mail", {} ) ).toBeFalse();
+				expect( telemetry.$callLog( "gauge" ).gauge.len() ).toBe( 0 );
+				expect(
+					variables.service.captureQueueWorkerHealth( "mail", function(){
+						return { activeWorkers : 0 };
+					} )
 				).toBeTrue();
 				expect( telemetry.$callLog( "gauge" ).gauge.len() ).toBe( 1 );
-				var native = createObject( "java", "java.util.concurrent.Executors" ).newFixedThreadPool(
-					javacast( "int", 1 )
-				);
-				try {
-					var executor = new coldbox.system.async.executors.Executor( "health-test", native );
-					expect(
-						variables.service.captureCBQWorkerHealth(
-							"mail",
-							{
-								getQuantity : function(){
-									return 1;
-								},
-								getExecutor : function(){
-									return executor;
-								}
-							}
-						)
-					).toBeTrue();
-					var calls            = telemetry.$callLog( "gauge" ).gauge;
-					// ColdBox 6 lacks the advertised activity capability; absence must remain absence.
-					var stats            = executor.getStats();
-					var supportsActivity = stats.keyExists( "features" ) && stats.features.keyExists( "taskMethods" ) && stats.features.taskMethods;
-					expect( calls.len() ).toBe( supportsActivity ? 3 : 2 );
-					for ( var call in calls ) {
-						if ( call[ 1 ] == "queue.executions.active" ) expect( call[ 2 ] ).toBe( 0 );
-					}
-				} finally {
-					native.shutdownNow();
-				}
 			} );
 
 			it( "restricts executor names and omits unsupported or nonnumeric fields", function(){

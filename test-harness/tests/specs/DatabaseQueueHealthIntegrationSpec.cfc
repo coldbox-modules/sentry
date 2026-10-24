@@ -49,6 +49,7 @@ component extends="testbox.system.BaseSpec" {
 					enableMetrics    : true,
 					queueWorkerNames : [ "health" ]
 				} );
+				variables.service.getObservability().setAdapterInjector( variables.wirebox );
 			} );
 
 			afterEach( function(){
@@ -75,8 +76,14 @@ component extends="testbox.system.BaseSpec" {
 						intervalSeconds   : 1,
 						runtime           : false,
 						requestSaturation : false,
-						queueWorkers      : [ { name : "health", pool : variables.key } ],
-						databaseQueues    : [
+						queueWorkers      : [
+							{
+								name    : "health",
+								adapter : "WorkerHealthAdapter@cbq",
+								options : { pool : variables.key }
+							}
+						],
+						databaseQueues : [
 							{
 								name         : "health",
 								queue        : "health",

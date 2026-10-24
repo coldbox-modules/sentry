@@ -133,8 +133,9 @@ component {
 				"requestSaturation"   : true,
 				// Poll local receipt state; never send delivery-health metrics through their own transport.
 				"deliveryDiagnostics" : false,
-				// Up to 32 {name,pool:cbqPoolName} or {name,adapter:callback|mapping|{mapping,method}} definitions.
-				// Snapshot adapters implement ISnapshotAdapter.sample(context), returning supported worker numeric fields.
+				// Up to 32 {name,adapter:callback|mapping|{mapping,method},options:{...}} definitions. No default provider.
+				// Adapters follow ISnapshotAdapter.sample(context); context.options contains provider-specific configuration.
+				// Example: {name:"mail",adapter:"WorkerHealthAdapter@cbq",options:{pool:"mail"}} (requires cbq's adapter).
 				"queueWorkers"        : [],
 				// Up to 32 {name,queue,table,queryFactory} definitions. queue defaults to name; table to cbq_jobs.
 				// Emits pending depth/oldest age as well as runnable/delayed/lease health.

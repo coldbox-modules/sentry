@@ -1,5 +1,15 @@
 # Local operational-observability verification — October 24, 2026
 
+## Provider-owned worker adapter follow-up
+
+Automatic `queueWorkers` now requires an explicit `adapter`, with provider configuration in `options`. Sentry no longer chooses cbq from a `pool` key. The optional cbq implementation lives in cbq as `WorkerHealthAdapter@cbq`, follows the `sample(context)` contract without a Sentry dependency, and requires `options.pool`. The existing manual cbq API delegates to that mapping; generic manual snapshot APIs remain available without cbq.
+
+The complete Sentry harness passed **134/134**, and cbq's new adapter bundle passed **6/6**, on each prepared Lucee 5.4.8.2, BoxLang 1.18.0+66 and Adobe 2023 update 25 runtime. All results have zero failures, errors or skips. The ten live PostgreSQL/cbq cases use cbq `next` base `fad884a` plus the new adapter, installed qb 14.1.0, and actual registered worker pools. The automatic case resolves cbq's adapter through WireBox, passes its explicit pool option, and observes an actual blocked worker with reserved work, pending depth and oldest age. Native executor activity is also checked in the adapter bundle. No installed application dependency was edited.
+
+Evidence: `/tmp/sentry-worker-adapter-final-lucee5.json`, `/tmp/sentry-worker-adapter-final-boxlang.json`, `/tmp/sentry-worker-adapter-final-adobe2023.json`, and the corresponding `/tmp/cbq-worker-adapter-final-*.json` files. Sentry formatting checked 63 files; cbq formatting checked its two new CFCs. Both whitespace checks passed. Independent bug/CFML/BoxLang compatibility review found a stale configuration example, now fixed, and re-review found no remaining actionable issue. The separate complete cbq suite was not run locally; its hosted workflow and the Sentry hosted matrix are reported on their draft PRs.
+
+The disposable database `sentry_queue_health_adapter_20261024` had no fixture tables after tests and was removed after owned processes stopped. The pre-existing PostgreSQL server remains running. Local server configuration and dependency links were restored. Using the cbq mapping requires a cbq release containing the adapter; existing releases do not acquire it automatically. Earlier evidence and limitations below retain their original scope.
+
 ## Ad hoc timing follow-up
 
 Manual `measure(name,callback)` and `begin(name)` now register valid phase names on first use without `requestTimingNames` configuration. The setting remains an optional initial name/header order list. Case variants record under the first spelling. Existing 32-name/64-sample limits, token ownership, name validation and original callback outcomes are preserved.

@@ -275,6 +275,26 @@ component extends="testbox.system.BaseSpec" {
 				expect( telemetry.$callLog( "gauge" ).gauge.len() ).toBe( 0 );
 			} );
 
+			it( "requires an explicit worker adapter rather than assuming cbq from a pool setting", function(){
+				var service = makeService( {
+					automaticCollectors : {
+						enabled           : true,
+						intervalSeconds   : 3600,
+						runtime           : false,
+						requestSaturation : false,
+						queueWorkers      : [ { name : "mail", pool : "not-a-default-provider" } ]
+					}
+				} );
+				var telemetry = prepareMock( service.getObservability() );
+				var injector  = prepareMock( makeInjector( service ) );
+				injector.$( "getInstance" ).$throws( "UnexpectedProviderLookup" );
+				telemetry.setAdapterInjector( injector );
+				telemetry.$( "gauge" );
+				service.collectAutomaticMetrics();
+				expect( service.automaticCollectorDiagnostics().failures ).toBe( 1 );
+				expect( injector.$callLog( "getInstance" ).getInstance.len() ).toBe( 0 );
+				expect( telemetry.$callLog( "gauge" ).gauge.len() ).toBe( 0 );
+			} );
 			it( "automatically samples configured callbacks and permits manual sampling too", function(){
 				var calls   = 0;
 				var service = makeService( {
@@ -286,8 +306,11 @@ component extends="testbox.system.BaseSpec" {
 						queueWorkers    : [
 							{
 								name    : "mail",
+								pool    : "ignored-legacy-shortcut",
+								options : { pool : "outbound", token : "PRIVATE" },
 								adapter : function( context ){
 									expect( context.kind ).toBe( "queueWorkers" );
+									expect( context.options.pool ).toBe( "outbound" );
 									calls++;
 									return { activeWorkers : 0 };
 								}
@@ -305,6 +328,7 @@ component extends="testbox.system.BaseSpec" {
 				var payload = serializeJSON( telemetry.$callLog( "gauge" ) );
 				expect( payload ).toInclude( "http.server.active_requests" );
 				expect( payload ).toInclude( "queue.workers.active" );
+				expect( payload ).notToInclude( "PRIVATE" );
 				expect(
 					service.captureQueueWorkerHealth( "mail", function(){
 						return { activeWorkers : 2 };
