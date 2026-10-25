@@ -95,8 +95,9 @@ component {
 			// Keep bounded, process-local envelope outcomes. Acceptance does not prove indexing.
 			"enableDeliveryDiagnostics"       : false,
 			// Query tracing is off by default. auto/boxlang try native BoxLang hooks; unavailable hooks leave tracing off.
-			// qb is an explicit optional integration; lucee requires an application query listener.
+			// lucee requires an application query listener. Library integrations use explicit provider-owned mappings.
 			// Also accepts callback(context) or a mapping implementing IQueryAdapter.configure(context).
+			// Example: QueryTelemetryAdapter@qb (requires a qb release containing that optional adapter).
 			"queryAdapter"                    : "none",
 			// Optional initial phase names/header order; measure()/begin() also accept ad hoc names without configuration.
 			// At most 32 distinct HTTP-safe names per instance. Automatic timing supplies handler/render.
@@ -140,7 +141,8 @@ component {
 				// Up to 32 {name,adapter:callback|mapping|{mapping,method},options:{...}} definitions. No default provider.
 				// One snapshot supplies supported backlog/depth/age/lease fields and worker activity; absent fields stay absent.
 				// Adapters follow sample(context); context.options is provider-specific configuration.
-				// Example: {name:"mail",adapter:"QueueHealthAdapter@cbq",options:{pool:"outbound"}} (requires cbq's adapter).
+				// cbq example: options:{workerPool:"outbound"} for workers/backlog or {connection:"database",queue:"mail"} for backlog only.
+				// Both require an explicit adapter:"QueueHealthAdapter@cbq" from a compatible cbq release.
 				"queues"              : [],
 				// Up to 32 {name,adapter} definitions returning active/max/queued/rejected via callback(context) or ISnapshotAdapter.sample(context).
 				"requestExecutors"    : [],
@@ -174,8 +176,7 @@ component {
 		);
 		interceptors = [
 			{ class : "#moduleMapping#.interceptors.QueueObservability" },
-			{ class : "#moduleMapping#.interceptors.Observability" },
-			{ class : "#moduleMapping#.interceptors.QueryObservability" }
+			{ class : "#moduleMapping#.interceptors.Observability" }
 		];
 		interceptorSettings = { customInterceptionPoints : [ "onSentryEventCapture" ] };
 	}

@@ -50,10 +50,18 @@ Query tracing observes executions; it does not supply a query builder or choose 
 | `"none"` | No automatic query instrumentation. Manual `withQuerySpan` remains available. |
 | `"auto"` / `"boxlang"` | Complete native BoxLang query hooks when available; otherwise automatic query tracing stays off. There is no query-library fallback. |
 | `"lucee"` | Select the native application listener configured below. This setting does not install the listener. |
-| `"qb"` | Explicitly observe compatible qb execution events, only for applications choosing qb. |
+| `"QueryTelemetryAdapter@qb"` | Explicitly install the optional adapter shipped by a compatible qb release. qb owns its execution listeners and cleanup. |
 | Callback or WireBox mapping | Install your own execution hooks with `configure(context)`. Return `{mode:"custom",shutdown:callback}` for cleanup. |
 
-Custom setup receives `context.telemetry` and `context.applicationName`. It must install its integration; returning `"custom"` alone does not observe queries. Returning a built-in mode selects that explicit integration instead. This setup hook is separate from dependency method advice and periodic database-pool health snapshots.
+Custom setup receives `context.telemetry`, `context.applicationName` and `context.databaseSystem` (default `"other"`). It must install its integration; returning `"custom"` alone does not observe queries. Returning a built-in native mode selects that explicit integration instead. This setup hook is separate from dependency method advice and periodic database-pool health snapshots.
+
+```cfml
+// Explicitly select the optional execution adapter shipped by qb.
+// Requires an installed qb version containing QueryTelemetryAdapter.
+moduleSettings.sentry.queryAdapter = "QueryTelemetryAdapter@qb";
+```
+
+Sentry contains no qb event interceptor or built-in `"qb"` mode. Other query libraries can ship their own mapping or configure callback using the same lifecycle contract. The qb adapter creates a scrubbed span for each real execution, preserves result/exception behavior, suppresses duplicate manual/native spans, and removes only its owned listeners on shutdown after in-flight executions drain.
 
 On Lucee 6+, compose your existing application listener:
 

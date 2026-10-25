@@ -75,7 +75,7 @@ Configured idle queues emit zero immediately after a successful poll. Dynamicall
 
 Schedule existing `sentry.captureRuntimeGauges()` explicitly with `enableMetrics: true`. It now returns the samples it observed: heap used/max bytes, thread count, optional process CPU load (`jvm.cpu.process`, ratio 0–1), and cumulative GC collections/time (`jvm.gc.collections.total`, `jvm.gc.duration.total`, milliseconds). Negative/unsupported CPU or GC values are omitted. GC gauges are totals since JVM startup: calculate deltas over elapsed time and handle resets; do not sum cumulative samples or interpret them as pause percentiles. CPU uses an optional JVM MXBean attribute, not a BoxLang profiler. Heap/threads remain independent of CPU/GC availability. No sampling occurs when metrics are disabled.
 
-Connection acquisition and pool visibility depend on the engine/provider. Query execution spans do not isolate connection waits. BoxLang automatic query tracing stays off when the native runtime lacks a caught-query failure event; no query library is inferred. qb hooks require explicit selection. Native Lucee query listeners and custom/manual integrations remain supported as documented in [observability.md](observability.md). No CPU stack profiler, allocation profiler, JDBC driver patch or engine-internal datasource pool inspection is added here.
+Connection acquisition and pool visibility depend on the engine/provider. Query execution spans do not isolate connection waits. BoxLang automatic query tracing stays off when the native runtime lacks a caught-query failure event; no query library is inferred. qb hooks require its explicit provider-owned adapter. Native Lucee query listeners and custom/manual integrations remain supported as documented in [observability.md](observability.md). No CPU stack profiler, allocation profiler, JDBC driver patch or engine-internal datasource pool inspection is added here.
 
 Use a supported provider/JMX adapter with `databasePoolNames: [ "primary" ]` and `sentry.captureDatabasePool( "primary", function(){ return poolAdapter.snapshot(); } )`. The callback returns any available nonnegative numeric `active`, `idle`, `max`, `waiters`, and cumulative `timeouts`; all other fields are discarded. `db.pool.utilization` is derived only from valid active/max values. Unsupported fields remain absent; callback failure returns false. Never return connection strings, credentials, datasource/tenant IDs, SQL, or exception text. Pool counters are gauges; compare deltas and account for JVM/pool resets. This is an optional adapter boundary, not a claim that these measurements are available on every CFML/BoxLang runtime.
 
@@ -159,7 +159,7 @@ queueNames: [ "mail" ]
 // Choose a provider adapter explicitly. This example uses the adapter shipped by cbq.
 queueAdapter = wirebox.getInstance( "QueueHealthAdapter@cbq" );
 sentry.captureQueueHealth( "mail", function(){
-    return queueAdapter.sample( { options: { pool: "outbound" } } );
+    return queueAdapter.sample( { options: { workerPool: "outbound" } } );
 } );
 
 // Or call another queue provider's supported snapshot API:
@@ -222,8 +222,8 @@ moduleSettings.sentry = {
             name: "mail",
             // Explicit provider-owned implementation; there is no default provider.
             adapter: "QueueHealthAdapter@cbq",
-            // Adapter-specific selection. cbq derives its provider and queues from this pool.
-            options: { pool: "outbound" }
+            // Adapter-specific selection. cbq derives connection/provider and queues from this worker pool.
+            options: { workerPool: "outbound" }
         } ],
         requestExecutors: [ { name: "http", adapter: "HttpExecutorSnapshot" } ],
         databasePools: [ { name: "primary", adapter: "PrimaryPoolSnapshot" } ]
@@ -249,13 +249,32 @@ Adapters can be callbacks, WireBox mapping IDs, compatible objects, or `{mapping
 | Dependency classifier | callback(result,failure) / IDependencyClassifier.classify(result,failure) | Bounded outcome/status/retry/circuit fields |
 | Query tracing setup | callback(context) / IQueryAdapter.configure(context) | Built-in mode or `{mode:"custom",shutdown:callback}` |
 
-Interfaces live under `sentry.models.telemetry.adapters`. Compatible provider adapters need not import Sentry's interface or depend on Sentry. Standalone services can use callbacks/objects; mapping IDs require an injector (ColdBox supplies it). Query tracing configuration receives `context.telemetry` and `context.applicationName`; built-in `queryAdapter` values `none`, `qb`, `lucee`, `auto` and `boxlang` retain their behavior. Custom setup can install query hooks and return a shutdown callback. This controls query tracing, independently of queue snapshots; there is no queue-specific query factory setting.
+Interfaces live under `sentry.models.telemetry.adapters`. Compatible provider adapters need not import Sentry's interface or depend on Sentry. Standalone services can use callbacks/objects; mapping IDs require an injector (ColdBox supplies it). Query tracing configuration receives `context.telemetry`, `context.applicationName` and `context.databaseSystem` (default `other`). Built-in `queryAdapter` values are `none`, `lucee`, `auto` and `boxlang`. For qb, explicitly select `QueryTelemetryAdapter@qb` from a compatible qb release; Sentry has no qb-specific interceptor or built-in `qb` mode. Custom setup installs query hooks and can return `{mode:"custom",shutdown:callback}` for lifecycle cleanup. This controls query tracing, independently of queue snapshots; there is no queue-specific query factory setting.
 
 ### cbq adapter ownership
 
-The optional cbq integration lives in cbq as `QueueHealthAdapter@cbq` and requires explicit `options.pool`. It resolves the actual pool each time, reads its provider and queue selection, and combines worker activity with any supported `getQueueHealth(queue)` provider snapshot. An optional `options.queue` overrides the selected queue(s). Otherwise the pool's queue name/array/wildcard selection is used. cbq's database provider applies its own configured table and query options/datasource. Other cbq providers without queue-snapshot support still report supported worker measurements, without invented backlog or heartbeat values.
+The optional cbq integration lives in cbq as `QueueHealthAdapter@cbq`. Choose exactly one explicit source: `options.workerPool` or `options.connection`. The former resolves the actual worker pool each time, derives its connection/provider and queue selection, and combines worker activity with any supported `getQueueHealth(queue)` provider snapshot. The latter samples the connection/provider directly without requiring or creating a worker pool and emits no worker fields. An optional `options.queue` overrides either source's selection; otherwise the worker pool's queue name/array/wildcard or the connection's default queue is used. Ambiguous sources and the former `options.pool` spelling are rejected. cbq's database provider applies its own configured table and query options/datasource. Providers without queue-snapshot support return only supported worker measurements for a worker pool or an empty snapshot for a connection, without invented backlog or heartbeat values.
 
-Worker measurements describe the entire pool, including when `options.queue` narrows the backlog selection. Prefer one collector per pool for combined measurements; separate per-queue backlog-only adapters should avoid duplicating shared pool activity.
+For backlog-only collection, use the same Sentry `queues` list with connection options:
+
+```cfml
+// Configure one logical queue snapshot without requiring cbq workers in this process.
+moduleSettings.sentry.automaticCollectors.queues = [ {
+    // Fixed telemetry label.
+    name: "mail",
+    // Optional implementation shipped by a compatible cbq release.
+    adapter: "QueueHealthAdapter@cbq",
+    // Select the cbq connection and queue, rather than a worker pool.
+    options: {
+        // Registered cbq connection name.
+        connection: "database",
+        // Queue selection; omitted uses the connection's default queue.
+        queue: "mail"
+    }
+} ];
+```
+
+Worker measurements describe the entire worker pool, including when `options.queue` narrows the backlog selection. Prefer one collector per worker pool for combined measurements; use connection-only definitions for additional per-queue backlog measurements to avoid duplicating shared worker activity.
 
 The installed cbq version must contain the adapter; existing releases do not gain it automatically. `WorkerHealthAdapter@cbq` remains a compatibility alias. Sentry's legacy `captureCBQWorkerHealth(name,pool)` and `DatabaseQueueHealth(queryFactory,table)` entrypoints delegate to cbq's optional implementations. New integrations should use the unified adapter contract. Neither module requires the other as an installed dependency.
 

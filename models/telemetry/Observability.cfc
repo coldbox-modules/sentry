@@ -154,7 +154,7 @@ component {
 		if ( variables.queryAdapterConfigured ) return variables.settings.queryAdapter;
 		variables.queryAdapterConfigured = true;
 		var selected                     = variables.settings.queryAdapter;
-		if ( !isSimpleValue( selected ) || !listFind( "none,qb,lucee,auto,boxlang", selected ) ) {
+		if ( !isSimpleValue( selected ) || !listFind( "none,lucee,auto,boxlang", selected ) ) {
 			try {
 				var configured = variables.adapterResolver.call(
 					selected,
@@ -162,7 +162,8 @@ component {
 					{
 						"context" : {
 							"telemetry"       : this,
-							"applicationName" : arguments.applicationName
+							"applicationName" : arguments.applicationName,
+							"databaseSystem"  : variables.settings.databaseSystem ?: "other"
 						}
 					}
 				);
@@ -173,7 +174,7 @@ component {
 				} else {
 					selected = configured;
 				}
-				if ( !isSimpleValue( selected ) || !listFind( "none,qb,lucee,auto,boxlang,custom", selected ) )
+				if ( !isSimpleValue( selected ) || !listFind( "none,lucee,auto,boxlang,custom", selected ) )
 					selected = "none";
 			} catch ( any unavailable ) {
 				selected = "none";

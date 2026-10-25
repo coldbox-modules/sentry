@@ -155,7 +155,7 @@ component extends="testbox.system.BaseSpec" {
 				var service  = makeService( { queryAdapter : { mapping : "QueryAdapter", method : "configure" } } );
 				var injector = makeInjector( service );
 				service.getObservability().setAdapterInjector( injector );
-				expect( service.getObservability().configureQueryInstrumentation( "fixture" ) ).toBe( "qb" );
+				expect( service.getObservability().configureQueryInstrumentation( "fixture" ) ).toBe( "custom" );
 			} );
 			it( "prevents overlapping ticks and starting more adapters after shutdown", function(){
 				var started = createObject( "java", "java.util.concurrent.CountDownLatch" ).init( 1 );
@@ -373,10 +373,10 @@ component extends="testbox.system.BaseSpec" {
 							{
 								name    : "mail",
 								pool    : "ignored-legacy-shortcut",
-								options : { pool : "outbound", token : "PRIVATE" },
+								options : { workerPool : "outbound", token : "PRIVATE" },
 								adapter : function( context ){
 									expect( context.kind ).toBe( "queues" );
-									expect( context.options.pool ).toBe( "outbound" );
+									expect( context.options.workerPool ).toBe( "outbound" );
 									calls++;
 									return { activeWorkers : 0 };
 								}
@@ -520,9 +520,12 @@ component extends="testbox.system.BaseSpec" {
 				var calls   = 0;
 				var stopped = 0;
 				var service = makeService( {
-					queryAdapter : function( context ){
+					databaseSystem : "postgresql",
+					queryAdapter   : function( context ){
 						calls++;
 						expect( context.applicationName ).toBe( "test-app" );
+						expect( context.databaseSystem ).toBe( "postgresql" );
+						expect( isObject( context.telemetry ) ).toBeTrue();
 						return {
 							mode     : "custom",
 							shutdown : function(){
@@ -561,8 +564,19 @@ component extends="testbox.system.BaseSpec" {
 					}
 				} );
 				expect( service.getObservability().configureQueryInstrumentation( "test" ) ).toBe( "none" );
-				var qb = makeService( { queryAdapter : "qb" } );
-				expect( qb.getObservability().configureQueryInstrumentation( "test" ) ).toBe( "qb" );
+				var lucee = makeService( { queryAdapter : "lucee" } );
+				expect( lucee.getObservability().configureQueryInstrumentation( "test" ) ).toBe( "lucee" );
+			} );
+			it( "leaves library instrumentation to explicit provider mappings", function(){
+				var service = makeService( { queryAdapter : "QueryTelemetryAdapter@qb" } );
+				expect( service.getObservability().configureQueryInstrumentation( "test" ) ).toBe( "none" );
+				var callback = makeService( {
+					queryAdapter : function( context ){
+						expect( context.databaseSystem ).toBe( "other" );
+						return "qb";
+					}
+				} );
+				expect( callback.getObservability().configureQueryInstrumentation( "test" ) ).toBe( "none" );
 			} );
 			it( "supports classifier mappings in the unchanged manual dependency API", function(){
 				var service  = makeService( { dependencyNames : [ "mail" ] } );

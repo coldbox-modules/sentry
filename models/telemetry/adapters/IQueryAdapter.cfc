@@ -1,4 +1,4 @@
-/** Configure query instrumentation. Return a built-in mode, or {mode:"custom",shutdown:callback}. */
+/** Install execution hooks using context.telemetry/applicationName/databaseSystem. Return a native mode or {mode:"custom",shutdown:callback}. */
 interface {
 
 	any function configure( required struct context );

@@ -80,7 +80,7 @@ component extends="testbox.system.BaseSpec" {
 							{
 								name    : "health",
 								adapter : "QueueHealthAdapter@cbq",
-								options : { pool : variables.key }
+								options : { workerPool : variables.key }
 							}
 						]
 					}
@@ -109,6 +109,89 @@ component extends="testbox.system.BaseSpec" {
 				} );
 			} );
 
+			it( "loads qb's optional adapter through WireBox and cleans only its owned listeners", function(){
+				variables.service.shutdown();
+				variables.service = new sentry.models.SentryService( {
+					DSN              : "http://public@127.0.0.1:60320/1",
+					tracesSampleRate : 1,
+					queryAdapter     : "QueryTelemetryAdapter@qb",
+					databaseSystem   : "postgresql"
+				} );
+				var telemetry = variables.service.getObservability();
+				telemetry.setAdapterInjector( variables.wirebox );
+				var interceptors = application.cbController.getInterceptorService();
+				var states       = interceptors.getInterceptionStates();
+				var before       = states.keyExists( "preQBExecute" ) ? states.preQBExecute.getInterceptors().size() : 0;
+				var extra        = {};
+				try {
+					variables.wirebox.getInstance( "QueryTelemetryAdapter@qb" );
+					expect( telemetry.configureQueryInstrumentation( getApplicationMetadata().name ) ).toBe( "custom" );
+					expect( states.preQBExecute.getInterceptors().size() ).toBe( before + 1 );
+					var root = variables.service.startTransaction( "qb adapter integration" );
+					telemetry.setScope( { span : root, marker : "preserved" } );
+					jobQuery().where( "queue", "health" ).get();
+					expect( root.getChildren().len() ).toBe( 1 );
+					expect( root.getChildren()[ 1 ].toPayload().data[ "db.system" ] ).toBe( "postgresql" );
+					expect( root.getChildren()[ 1 ].toPayload().status ).toBe( "ok" );
+					expect( function(){
+						jobQuery().select( "sentry_health_missing_column" ).get();
+					} ).toThrow();
+					expect( root.getChildren().len() ).toBe( 2 );
+					expect( root.getChildren()[ 2 ].toPayload().status ).toBe( "internal_error" );
+					variables.service.withQuerySpan(
+						"SELECT 'PRIVATE_QUERY_LITERAL'",
+						function( span ){
+							return jobQuery().get();
+						},
+						"postgresql"
+					);
+					expect( root.getChildren().len() ).toBe( 3 );
+					expect( root.getChildren()[ 3 ].toPayload().description ).notToInclude( "PRIVATE_QUERY_LITERAL" );
+					expect( telemetry.getScope().span.getContext().span_id ).toBe( root.getContext().span_id );
+					expect( telemetry.getScope().marker ).toBe( "preserved" );
+					expect( telemetry.getScope().keyExists( "manualQuerySpan" ) ).toBeFalse();
+					extra = variables.wirebox
+						.getInstance( "QueryTelemetryAdapter@qb" )
+						.configure( {
+							telemetry       : telemetry,
+							applicationName : getApplicationMetadata().name,
+							databaseSystem  : "postgresql"
+						} );
+					expect( states.preQBExecute.getInterceptors().size() ).toBe( before + 2 );
+					var pending = { sql : "SELECT 1", pretend : false };
+					interceptors.announce( "preQBExecute", pending );
+					expect( root.getChildren().len() ).toBe( 3 );
+					variables.service.shutdown();
+					// Active execution keeps completion hooks until it restores the original scope.
+					expect( states.preQBExecute.getInterceptors().size() ).toBe( before + 2 );
+					interceptors.announce( "postQBExecute", pending );
+					expect( root.getChildren().len() ).toBe( 4 );
+					expect( telemetry.getScope().span.getContext().span_id ).toBe( root.getContext().span_id );
+					expect( telemetry.getScope().keyExists( "manualQuerySpan" ) ).toBeFalse();
+					expect( states.preQBExecute.getInterceptors().size() ).toBe( before + 1 );
+					extra.shutdown();
+					extra.shutdown();
+					expect( states.preQBExecute.getInterceptors().size() ).toBe( before );
+				} finally {
+					if ( extra.keyExists( "shutdown" ) ) extra.shutdown();
+					telemetry.clearScope();
+				}
+			} );
+			it( "samples connection backlog without registering a worker pool", function(){
+				seed();
+				seed( { queue : "other", availableDate : epoch() + 3600 } );
+				expect( variables.config.getWorkerPools().keyExists( variables.key ) ).toBeFalse();
+				var adapter  = variables.wirebox.getInstance( "QueueHealthAdapter@cbq" );
+				var snapshot = adapter.sample( { options : { connection : variables.key } } );
+				expect( snapshot.depth ).toBe( 1 );
+				expect( snapshot.runnable ).toBe( 1 );
+				expect( snapshot.keyExists( "configuredWorkers" ) ).toBeFalse();
+				expect( snapshot.keyExists( "activeExecutions" ) ).toBeFalse();
+				var allQueues = adapter.sample( { options : { connection : variables.key, queue : "*" } } );
+				expect( allQueues.depth ).toBe( 2 );
+				expect( allQueues.delayed ).toBe( 1 );
+				expect( variables.config.getWorkerPools().keyExists( variables.key ) ).toBeFalse();
+			} );
 			it( "uses provider-owned table and datasource settings for multiple queues and wildcard snapshots", function(){
 				seed( { availableDate : epoch() } );
 				seed( { queue : "other", availableDate : epoch() + 3600 } );

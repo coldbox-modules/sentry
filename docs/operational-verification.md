@@ -1,4 +1,18 @@
-# Local operational-observability verification — October 24, 2026
+# Local operational-observability verification — October 25, 2026
+
+## Provider-owned query and queue adapters
+
+qb now owns the optional `QueryTelemetryAdapter@qb` execution listeners. Sentry resolves that explicit mapping through the generic query-setup contract, passes telemetry/application name/database system, and owns no qb interceptor or built-in `qb` mode. Manual query spans and native engine listeners remain available. Shutdown rejects new observations while active query completions drain and restore their scopes before qb unregisters its own listeners. Independent review found the original immediate-unregister race; the corrected implementation and regressions were re-reviewed. Adobe also required avoiding a listener method named `release`, which collides with engine lifecycle behavior.
+
+cbq's queue adapter now selects exactly one `options.workerPool` or `options.connection`. Worker pools supply combined worker/backlog data; connections supply backlog without requiring or registering workers. Queue overrides/defaults follow the selected source. Ambiguous sources and the former `options.pool` spelling are rejected. The earlier reported MySQL CI failure was superseded by the existing quoted-alias fix; it was already green before this selector follow-up.
+
+Final local proof on each prepared Lucee 5.4.8.2, Adobe 2023 update 25 and BoxLang 1.18.0+66 runtime:
+
+- **141/141 Sentry specs**, including thirteen real PostgreSQL/cbq cases. New cases prove connection-only snapshots without a worker pool and actual ColdBox/WireBox qb adapter resolution, real query success/error spans, SQL scrubbing, manual de-duplication, scope restoration, independent listener ownership and in-flight completion during shutdown.
+- **14/14 cbq adapter specs**, including both selector paths, absent capabilities and failure/validation behavior.
+- **16/16 focused qb adapter/failure-hook specs**, run independently by the qb implementation subagent. The complete qb suite and hosted checks are recorded separately on its draft PR.
+
+All local results above have zero failures/errors/skips. Evidence is `/tmp/sentry-provider-adapters-final-{lucee5,adobe2023,boxlang}.json`, `/tmp/cbq-provider-selectors-final-{lucee5,adobe2023,boxlang}.json` and `/tmp/qb-telemetry-final-{lucee5,adobe2023,boxlang}.json`. The dedicated PostgreSQL 18.1 database is `sentry_queue_health_adapters_20261025`; the final runs leave zero tables. The owned harness uses the new qb/cbq worktrees through temporary local links/settings; installed application modules remain unchanged. Formatting and whitespace checks pass. Adapter mappings require provider versions containing these additions; no release or consumer upgrade is implied by a draft PR. Prepared-runtime, provider/backend, heartbeat, timeout and delivery limitations below still apply.
 
 ## Unified queue adapter follow-up
 
