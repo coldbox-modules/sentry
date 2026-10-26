@@ -24,7 +24,7 @@ component {
 				return result;
 			}
 			var span = variables.telemetry.startSpan(
-				variables.telemetry.scrubSQL( sql ),
+				sql,
 				"db.query",
 				{
 					"db.system"    : variables.databaseSystem,

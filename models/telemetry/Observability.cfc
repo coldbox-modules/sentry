@@ -5,6 +5,9 @@ component {
 		variables[ "owner" ]    = arguments.owner;
 		variables[ "settings" ] = arguments.settings;
 		variables.settings.append( defaults(), false );
+		variables.postgreSQLNumberPattern = createObject( "java", "java.util.regex.Pattern" ).compile(
+			"(?<![\p{L}\p{N}_])(?:0[xX][0-9A-Fa-f_]+|0[oO][0-7_]+|0[bB][01_]+|(?:[0-9][0-9_]*(?:\.[0-9_]*)?|\.[0-9][0-9_]*)(?:[eE][+-]?[0-9][0-9_]*)?)(?![\p{L}\p{N}_])"
+		);
 		variables.adapterResolver = new AdapterResolver();
 		normalizeAutomaticSettings();
 		variables.queryAdapterConfigured = false;
@@ -437,17 +440,19 @@ component {
 		string op         = "function",
 		struct attributes = {}
 	){
+		var description = listFind( "db.query,db.query.cache,db.query.qoq", arguments.op ) ? scrubSQL(
+			arguments.name,
+			arguments.attributes[ "db.system" ] ?: variables.settings.databaseSystem ?: "other"
+		) : safeName( arguments.name );
 		var current = getScope();
 		if ( !current.keyExists( "span" ) || current.span.isFinished() ) {
 			return new Span(
 				this,
 				{
-					"trace_id"    : id(),
-					"span_id"     : left( id(), 16 ),
-					"op"          : arguments.op,
-					"description" : arguments.op == "db.query" ? scrubSQL( arguments.name ) : safeName(
-						arguments.name
-					),
+					"trace_id"        : id(),
+					"span_id"         : left( id(), 16 ),
+					"op"              : arguments.op,
+					"description"     : description,
 					"start_timestamp" : timestamp(),
 					"data"            : {},
 					"status"          : "ok"
@@ -459,13 +464,11 @@ component {
 		return new Span(
 			this,
 			{
-				"trace_id"       : parent.trace_id,
-				"span_id"        : left( id(), 16 ),
-				"parent_span_id" : parent.span_id,
-				"op"             : arguments.op,
-				"description"    : arguments.op == "db.query" ? scrubSQL( arguments.name ) : safeName(
-					arguments.name
-				),
+				"trace_id"        : parent.trace_id,
+				"span_id"         : left( id(), 16 ),
+				"parent_span_id"  : parent.span_id,
+				"op"              : arguments.op,
+				"description"     : description,
 				"start_timestamp" : timestamp(),
 				"status"          : "ok",
 				"data"            : sanitizeAttributes( arguments.attributes )
@@ -914,7 +917,7 @@ component {
 	){
 		var queryCallback = arguments.callback;
 		return withSpan(
-			scrubSQL( arguments.sql ),
+			scrubSQL( arguments.sql, arguments.databaseSystem ),
 			function( span ){
 				var previous         = getScope();
 				var next             = structCopy( previous );
@@ -1283,7 +1286,17 @@ component {
 			return "";
 		}
 	}
-	function scrubSQL( required string sql ){
+	function scrubSQL( required string sql, string databaseSystem = "" ){
+		var dialect = len( arguments.databaseSystem ) ? arguments.databaseSystem : (
+			variables.settings.databaseSystem ?: "other"
+		);
+		if ( dialect == "postgresql" ) {
+			// Escape strings, dollar quoting and other unsupported forms fail closed.
+			if ( find( "$", arguments.sql ) || find( "`", arguments.sql ) || find( chr( 92 ), arguments.sql ) ) {
+				return "[Filtered SQL]";
+			}
+			return scrubPostgreSQL( arguments.sql );
+		}
 		// Unsupported quoting is discarded rather than risking exporting literals.
 		if ( find( "$", arguments.sql ) || find( "`", arguments.sql ) || find( "\\", arguments.sql ) ) {
 			return uCase( listFirst( trim( arguments.sql ), " " ) ) & " [Filtered]";
@@ -1305,6 +1318,103 @@ component {
 			return "[Filtered SQL]";
 		}
 		return left( reReplace( scrubbed, "\s+", " ", "all" ), 1024 );
+	}
+	/** Scan quotes and comments together so comment markers inside values/identifiers are inert. */
+	private function scrubPostgreSQL( required string sql ){
+		var parts      = [];
+		var cursor     = 1;
+		var plainStart = 1;
+		var size       = len( arguments.sql );
+		while ( cursor <= size ) {
+			var character = mid( arguments.sql, cursor, 1 );
+			var pair      = mid( arguments.sql, cursor, 2 );
+			if ( character != "'" && character != """" && pair != "--" && pair != "/*" ) {
+				cursor++;
+				continue;
+			}
+			if ( cursor > plainStart ) {
+				parts.append( scrubPostgreSQLNumbers( mid( arguments.sql, plainStart, cursor - plainStart ) ) );
+			}
+			var tokenStart = cursor;
+			if ( character == "'" || character == """" ) {
+				var quote  = character;
+				var closed = false;
+				cursor++;
+				while ( cursor <= size ) {
+					if ( mid( arguments.sql, cursor, 1 ) == quote ) {
+						if ( mid( arguments.sql, cursor + 1, 1 ) == quote ) {
+							cursor += 2;
+							continue;
+						}
+						cursor++;
+						closed = true;
+						break;
+					}
+					cursor++;
+				}
+				if ( !closed ) {
+					return "[Filtered SQL]";
+				}
+				parts.append( quote == """" ? mid( arguments.sql, tokenStart, cursor - tokenStart ) : "?" );
+			} else if ( pair == "--" ) {
+				cursor += 2;
+				while ( cursor <= size && !find( mid( arguments.sql, cursor, 1 ), chr( 10 ) & chr( 13 ) ) ) {
+					cursor++;
+				}
+				parts.append( " " );
+			} else {
+				var depth = 1;
+				cursor += 2;
+				while ( cursor <= size && depth > 0 ) {
+					pair = mid( arguments.sql, cursor, 2 );
+					if ( pair == "/*" ) {
+						depth++;
+						cursor += 2;
+					} else if ( pair == "*/" ) {
+						depth--;
+						cursor += 2;
+					} else {
+						cursor++;
+					}
+				}
+				if ( depth > 0 ) {
+					return "[Filtered SQL]";
+				}
+				parts.append( " " );
+			}
+			plainStart = cursor;
+		}
+		if ( plainStart <= size ) {
+			parts.append(
+				scrubPostgreSQLNumbers(
+					mid(
+						arguments.sql,
+						plainStart,
+						size - plainStart + 1
+					)
+				)
+			);
+		}
+		var result = "";
+		for ( var part in parts ) {
+			var identifier = left( part, 1 ) == """";
+			var text       = identifier ? part : reReplace( part, "\s+", " ", "all" );
+			if ( right( result, 1 ) == " " && left( text, 1 ) == " " ) {
+				text = removeChars( text, 1, 1 );
+			}
+			if ( len( result ) + len( text ) > 1024 ) {
+				// Do not split identifiers: adapters may sanitize this description again.
+				if ( !identifier ) {
+					result &= left( text, 1024 - len( result ) );
+				}
+				break;
+			}
+			result &= text;
+		}
+		return trim( result );
+	}
+	private function scrubPostgreSQLNumbers( required string sql ){
+		return variables.postgreSQLNumberPattern.matcher( arguments.sql ).replaceAll( "?" );
 	}
 	function getTransport(){
 		return variables.transport;
