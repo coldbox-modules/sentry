@@ -5,6 +5,60 @@ component {
 		variables[ "owner" ]    = arguments.owner;
 		variables[ "settings" ] = arguments.settings;
 		variables.settings.append( defaults(), false );
+		variables.postgreSQLNumberPattern = createObject( "java", "java.util.regex.Pattern" ).compile(
+			"(?<![\p{L}\p{N}_])(?:0[xX][0-9A-Fa-f_]+|0[oO][0-7_]+|0[bB][01_]+|(?:[0-9][0-9_]*(?:\.[0-9_]*)?|\.[0-9][0-9_]*)(?:[eE][+-]?[0-9][0-9_]*)?)(?![\p{L}\p{N}_])"
+		);
+		variables.adapterResolver = new AdapterResolver();
+		normalizeAutomaticSettings();
+		variables.queryAdapterConfigured = false;
+		variables.closed                 = createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false );
+		variables.requests               = new RequestSaturation(
+			this,
+			variables.settings.maxObservedRequests,
+			variables.settings.requestLongRunningSeconds
+		);
+		variables.dependencies = new MetricLabels( variables.settings.dependencyNames );
+		variables.executors    = new HealthSampler(
+			this,
+			variables.settings.requestExecutorNames,
+			{
+				"active"   : { "name" : "http.server.executor.active", "unit" : "none" },
+				"max"      : { "name" : "http.server.executor.max", "unit" : "none" },
+				"queued"   : { "name" : "http.server.executor.queued", "unit" : "none" },
+				"rejected" : {
+					"name" : "http.server.executor.rejected.total",
+					"unit" : "none"
+				}
+			},
+			"executor.name"
+		);
+		var queueFields = {
+			"configuredWorkers" : { "name" : "queue.workers.configured", "unit" : "none" },
+			"activeWorkers"     : { "name" : "queue.workers.active", "unit" : "none" },
+			"activeExecutions"  : { "name" : "queue.executions.active", "unit" : "none" },
+			"lastHeartbeatAt"   : { "name" : "queue.worker.heartbeat_age", "unit" : "second" },
+			"runnable"          : { "name" : "queue.backlog.runnable", "unit" : "none" },
+			"delayed"           : { "name" : "queue.backlog.delayed", "unit" : "none" },
+			"reserved"          : { "name" : "queue.backlog.reserved", "unit" : "none" },
+			"staleReservations" : { "name" : "queue.reservations.stale", "unit" : "none" },
+			"retries"           : { "name" : "queue.retries.total", "unit" : "none" },
+			"exhausted"         : { "name" : "queue.exhausted.total", "unit" : "none" },
+			"depth"             : { "name" : "queue.depth", "unit" : "none" },
+			"oldestAgeSeconds"  : { "name" : "queue.oldest_age", "unit" : "second" }
+		};
+		variables.workers = new HealthSampler(
+			this,
+			variables.settings.queueWorkerNames,
+			queueFields,
+			"worker.name"
+		);
+		variables.queues = new HealthSampler(
+			this,
+			variables.settings.queueNames,
+			queueFields,
+			"queue.name"
+		);
+		variables.delivery                = new DeliveryDiagnostics( variables.settings.maxPendingEnvelopes );
 		variables[ "scope" ]              = createObject( "java", "java.lang.ThreadLocal" ).init();
 		variables[ "completionFailures" ] = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init(
 			0
@@ -27,6 +81,12 @@ component {
 				createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
 			);
 		}
+		variables.collectors = new AutomaticCollectors(
+			this,
+			variables.settings.automaticCollectors,
+			variables.adapterResolver
+		);
+		if ( collectionEnabled() ) variables.collectors.start();
 		return this;
 	}
 	function defaults(){
@@ -35,9 +95,19 @@ component {
 			"maxSpans"                       : 1000,
 			"transportTimeout"               : 2000,
 			"maxPendingEnvelopes"            : 64,
+			"enableDeliveryDiagnostics"      : false,
 			"enableRequestTracing"           : false,
+			"enableRequestSaturation"        : false,
+			"maxObservedRequests"            : 4096,
+			"requestLongRunningSeconds"      : 30,
+			"requestExecutorNames"           : [],
+			"dependencyNames"                : [],
+			"queueWorkerNames"               : [],
+			"queueNames"                     : [],
 			"queryAdapter"                   : "none",
 			"enableQueueTracing"             : false,
+			"enableQueueJobMetrics"          : false,
+			"queueMetricDestinations"        : [],
 			"enableLogs"                     : false,
 			"enableStructuredLogBoxAppender" : false,
 			"logMessageMode"                 : "sanitized",
@@ -50,7 +120,26 @@ component {
 			"browser"                        : {},
 			"trustIncomingTrace"             : false,
 			"requestFilter"                  : "",
-			"attributeFilter"                : ""
+			"attributeFilter"                : "",
+			"enableAutomaticRequestTimings"  : false,
+			"publishServerTiming"            : false,
+			"serverTimingFilter"             : "",
+			"automaticCollectors"            : {
+				enabled             : false,
+				intervalSeconds     : 60,
+				runtime             : true,
+				requestSaturation   : true,
+				deliveryDiagnostics : false,
+				queues              : [],
+				requestExecutors    : [],
+				databasePools       : []
+			},
+			"dependencyAdapters"              : [],
+			"dependencyAdapterGenerationPath" : "/coldbox/system/aop/tmp",
+			"requestTimingNames"              : [],
+			"operationNames"                  : [],
+			"providerNames"                   : [],
+			"databasePoolNames"               : []
 		};
 	}
 	function registerBoxLangQueries( required string applicationName, string databaseSystem = "other" ){
@@ -65,18 +154,178 @@ component {
 		return listener;
 	}
 	function configureQueryInstrumentation( required string applicationName ){
-		if ( variables.settings.queryAdapter == "auto" || variables.settings.queryAdapter == "boxlang" ) {
+		if ( variables.queryAdapterConfigured ) return variables.settings.queryAdapter;
+		variables.queryAdapterConfigured = true;
+		var selected                     = variables.settings.queryAdapter;
+		if ( !isSimpleValue( selected ) || !listFind( "none,lucee,auto,boxlang", selected ) ) {
 			try {
-				// Partial native listeners cannot close caught direct-query failures. Prefer complete fallback.
+				var configured = variables.adapterResolver.call(
+					selected,
+					"configure",
+					{
+						"context" : {
+							"telemetry"       : this,
+							"applicationName" : arguments.applicationName,
+							"databaseSystem"  : variables.settings.databaseSystem ?: "other"
+						}
+					}
+				);
+				if ( isStruct( configured ) ) {
+					if ( configured.keyExists( "shutdown" ) && isCustomFunction( configured.shutdown ) )
+						variables.queryAdapterShutdown = configured.shutdown;
+					selected = configured.mode;
+				} else {
+					selected = configured;
+				}
+				if ( !isSimpleValue( selected ) || !listFind( "none,lucee,auto,boxlang,custom", selected ) )
+					selected = "none";
+			} catch ( any unavailable ) {
+				selected = "none";
+			}
+		}
+		variables.settings.queryAdapter = selected;
+		if ( selected == "auto" || selected == "boxlang" ) {
+			try {
 				createObject( "java", "ortus.boxlang.runtime.events.BoxEvent" ).valueOf( "ON_QUERY_EXECUTE_ERROR" );
 				registerBoxLangQueries( arguments.applicationName, variables.settings.databaseSystem ?: "other" );
 				variables.settings.queryAdapter = "boxlang";
 			} catch ( any unavailable ) {
-				variables.settings.queryAdapter = "qb";
+				variables.settings.queryAdapter = "none";
 			}
 		}
 		return variables.settings.queryAdapter;
 	}
+	function setAdapterInjector( required any injector ){
+		variables.adapterResolver.setInjector( arguments.injector );
+		return this;
+	}
+	function collectionEnabled(){
+		return variables.settings.enableMetrics && variables.owner.getEnabled();
+	}
+	function automaticCollectorDiagnostics(){
+		return variables.collectors.diagnostics();
+	}
+	function collectAutomaticMetrics(){
+		variables.collectors.tick();
+	}
+	function startAutomaticCollectors(){
+		if ( collectionEnabled() ) return variables.collectors.start();
+		return false;
+	}
+	private function normalizeAutomaticSettings(){
+		var collectorDefaults = defaults().automaticCollectors;
+		if ( !isStruct( variables.settings.automaticCollectors ) )
+			variables.settings.automaticCollectors = { "enabled" : false };
+		variables.settings.automaticCollectors.append( collectorDefaults, false );
+		for (
+			var flag in [
+				"enabled",
+				"runtime",
+				"requestSaturation",
+				"deliveryDiagnostics"
+			]
+		) {
+			if ( !isBoolean( variables.settings.automaticCollectors[ flag ] ) )
+				variables.settings.automaticCollectors[ flag ] = collectorDefaults[ flag ];
+		}
+		for ( var kind in [ "queues", "requestExecutors", "databasePools" ] ) {
+			if ( !isArray( variables.settings.automaticCollectors[ kind ] ) )
+				variables.settings.automaticCollectors[ kind ] = [];
+		}
+		if ( !isArray( variables.settings.dependencyAdapters ) ) variables.settings.dependencyAdapters = [];
+		variables.dependencyRules = [];
+		for ( var i = 1; i <= min( 32, variables.settings.dependencyAdapters.len() ); i++ ) {
+			var rule = variables.settings.dependencyAdapters[ i ];
+			if (
+				!isStruct( rule ) || !rule.keyExists( "name" ) || !rule.keyExists( "mapping" ) || !rule.keyExists( "methods" ) || !isSimpleValue(
+					rule.name
+				) || !isSimpleValue( rule.mapping ) || !isArray( rule.methods )
+			)
+				continue;
+			if (
+				!new MetricLabels( [ rule.name ] ).isAllowed( rule.name ) || !len( rule.mapping ) || reFind(
+					"[^A-Za-z0-9_.@:/-]",
+					rule.mapping
+				)
+			)
+				continue;
+			var methods = [];
+			for ( var method in rule.methods ) {
+				if (
+					!isNull( method ) && isSimpleValue( method ) && methods.len() < 16 && len( method ) && !reFind(
+						"[^A-Za-z0-9_]",
+						method
+					) && !arrayFindNoCase( methods, method )
+				)
+					methods.append( method );
+			}
+			if ( methods.len() )
+				variables.dependencyRules.append( {
+					"name"     : rule.name,
+					"mapping"  : rule.mapping,
+					"methods"  : methods,
+					"classify" : rule.classify ?: ""
+				} );
+		}
+		addAdapterNames( "dependencyNames", variables.dependencyRules );
+		addAdapterNames( "queueNames", variables.settings.automaticCollectors.queues );
+		addAdapterNames( "requestExecutorNames", variables.settings.automaticCollectors.requestExecutors );
+		addAdapterNames( "databasePoolNames", variables.settings.automaticCollectors.databasePools );
+	}
+	private function addAdapterNames( required string setting, required array definitions ){
+		var names = variables.settings[ arguments.setting ];
+		for ( var i = 1; i <= min( 32, arguments.definitions.len() ); i++ ) {
+			var definition = arguments.definitions[ i ];
+			if (
+				isStruct( definition ) && definition.keyExists( "name" ) && isSimpleValue( definition.name ) && names.len() < 32 && new MetricLabels( [ definition.name ] ).isAllowed(
+					definition.name
+				) && !arrayFindNoCase( names, definition.name )
+			)
+				names.append( definition.name );
+		}
+		variables.settings[ arguments.setting ] = names;
+	}
+	function dependencyBindings(){
+		var result = [];
+		for ( var rule in variables.dependencyRules )
+			result.append( {
+				"mapping" : rule.mapping,
+				"methods" : duplicate( rule.methods )
+			} );
+		return result;
+	}
+	function dependencyRule( required string mapping, required string method ){
+		for ( var rule in variables.dependencyRules ) {
+			if (
+				compareNoCase( rule.mapping, arguments.mapping ) == 0 && arrayFindNoCase(
+					rule.methods,
+					arguments.method
+				)
+			)
+				return rule;
+		}
+		return {};
+	}
+	function finishRequestTimings( required struct state, string status = "ok" ){
+		try {
+			if ( !arguments.state.keyExists( "timings" ) ) return;
+			for ( var token in arguments.state.handlerTokens )
+				arguments.state.timings.finish( token, arguments.status );
+			arguments.state.handlerTokens = [];
+			if ( arguments.state.keyExists( "renderToken" ) ) {
+				arguments.state.timings.finish( arguments.state.renderToken, arguments.status );
+				arguments.state.delete( "renderToken" );
+			}
+		} catch ( any unavailable ) {
+		}
+	}
+	function getRequestTimings(){
+		var scope = getScope();
+		if ( scope.keyExists( "requestState" ) && scope.requestState.keyExists( "timings" ) )
+			return scope.requestState.timings;
+		return javacast( "null", "" );
+	}
+
 	function percentageEligible(
 		required string key,
 		required string opaqueId,
@@ -111,37 +360,45 @@ component {
 		}
 		return 200;
 	}
-	function endRequest( numeric statusCode = 0 ){
+	function endRequest( numeric statusCode = 0, boolean timedOut = false ){
 		var current = getScope();
 		if ( !current.keyExists( "requestState" ) ) {
 			return;
 		}
-		var span = current.requestState.span;
 		try {
-			if ( !span.isFinished() ) {
-				var code = arguments.statusCode > 0 ? arguments.statusCode : responseStatus();
-				span.setAttribute( "http.response.status_code", code );
-				if ( code >= 500 ) {
-					span.setStatus( "internal_error" );
-				}
-				counter(
-					"http.server.requests",
-					1,
-					{
-						"route"                     : span.toPayload().description,
-						"http.response.status_code" : code
+			finishRequestTimings( current.requestState, arguments.timedOut ? "deadline_exceeded" : "ok" );
+			if ( current.requestState.keyExists( "span" ) ) {
+				var span = current.requestState.span;
+				if ( !span.isFinished() ) {
+					var code = arguments.statusCode > 0 ? arguments.statusCode : responseStatus();
+					span.setAttribute( "http.response.status_code", code );
+					if ( code >= 500 ) {
+						span.setStatus( "internal_error" );
 					}
-				);
-				distribution(
-					"http.server.duration",
-					max( 0, timestamp() - span.toPayload().start_timestamp ) * 1000,
-					{ "route" : span.toPayload().description },
-					"millisecond"
-				);
-				span.finish();
-				flushSignals();
+					counter(
+						"http.server.requests",
+						1,
+						{
+							"route"                     : span.toPayload().description,
+							"http.response.status_code" : code
+						}
+					);
+					distribution(
+						"http.server.duration",
+						max( 0, timestamp() - span.toPayload().start_timestamp ) * 1000,
+						{ "route" : span.toPayload().description },
+						"millisecond"
+					);
+					span.finish();
+					flushSignals();
+				}
 			}
 		} finally {
+			try {
+				if ( current.requestState.keyExists( "saturationToken" ) )
+					finishRequestObservation( current.requestState.saturationToken, arguments.timedOut );
+			} catch ( any unavailable ) {
+			}
 			setScope( current.requestState.previous );
 		}
 	}
@@ -183,17 +440,19 @@ component {
 		string op         = "function",
 		struct attributes = {}
 	){
+		var description = listFind( "db.query,db.query.cache,db.query.qoq", arguments.op ) ? scrubSQL(
+			arguments.name,
+			arguments.attributes[ "db.system" ] ?: variables.settings.databaseSystem ?: "other"
+		) : safeName( arguments.name );
 		var current = getScope();
 		if ( !current.keyExists( "span" ) || current.span.isFinished() ) {
 			return new Span(
 				this,
 				{
-					"trace_id"    : id(),
-					"span_id"     : left( id(), 16 ),
-					"op"          : arguments.op,
-					"description" : arguments.op == "db.query" ? scrubSQL( arguments.name ) : safeName(
-						arguments.name
-					),
+					"trace_id"        : id(),
+					"span_id"         : left( id(), 16 ),
+					"op"              : arguments.op,
+					"description"     : description,
 					"start_timestamp" : timestamp(),
 					"data"            : {},
 					"status"          : "ok"
@@ -205,13 +464,11 @@ component {
 		return new Span(
 			this,
 			{
-				"trace_id"       : parent.trace_id,
-				"span_id"        : left( id(), 16 ),
-				"parent_span_id" : parent.span_id,
-				"op"             : arguments.op,
-				"description"    : arguments.op == "db.query" ? scrubSQL( arguments.name ) : safeName(
-					arguments.name
-				),
+				"trace_id"        : parent.trace_id,
+				"span_id"         : left( id(), 16 ),
+				"parent_span_id"  : parent.span_id,
+				"op"              : arguments.op,
+				"description"     : description,
 				"start_timestamp" : timestamp(),
 				"status"          : "ok",
 				"data"            : sanitizeAttributes( arguments.attributes )
@@ -382,6 +639,189 @@ component {
 		array attachments = [],
 		boolean wait      = false
 	){
+		var receipt = sendSignalReceipt( argumentCollection = arguments );
+		if ( variables.settings.enableDeliveryDiagnostics ) {
+			try {
+				variables.delivery.record( receipt );
+			} catch ( any unavailable ) {
+				variables.completionFailures.incrementAndGet();
+			}
+		}
+		return receipt;
+	}
+	function deliveryDiagnostics(){
+		var result          = variables.delivery.snapshot();
+		result[ "enabled" ] = variables.settings.enableDeliveryDiagnostics;
+		return result;
+	}
+	function newRequestTimings( boolean automatic = false ){
+		var names = arguments.automatic ? [ "handler", "render" ] : [];
+		for ( var name in variables.settings.requestTimingNames ) {
+			// RequestTimings owns validation and deduplication for both manual and automatic names.
+			if ( !isNull( name ) ) names.append( name );
+		}
+		return new RequestTimings( this, names, 64, arguments.automatic );
+	}
+
+	/** Consumer supplies a supported pool adapter. Never inspect engine internals or JDBC credentials. */
+	function captureDatabasePool( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.settings.databasePoolNames.find( arguments.name ) ) {
+			return false;
+		}
+		try {
+			var values = arguments.sample();
+			var fields = {
+				"active"   : "db.pool.active",
+				"idle"     : "db.pool.idle",
+				"max"      : "db.pool.max",
+				"waiters"  : "db.pool.waiters",
+				"timeouts" : "db.pool.timeouts.total"
+			};
+			for ( var field in fields ) {
+				if ( values.keyExists( field ) && isNumeric( values[ field ] ) && values[ field ] >= 0 ) {
+					gauge(
+						fields[ field ],
+						values[ field ],
+						{ "db.pool.name" : arguments.name }
+					);
+				}
+			}
+			if (
+				values.keyExists( "active" ) && values.keyExists( "max" ) && isNumeric( values.active ) && isNumeric(
+					values.max
+				) && values.max > 0 && values.active >= 0 && values.active <= values.max
+			) {
+				gauge(
+					"db.pool.utilization",
+					values.active / values.max,
+					{ "db.pool.name" : arguments.name },
+					"ratio"
+				);
+			}
+			return true;
+		} catch ( any unavailable ) {
+			return false;
+		}
+	}
+	function beginRequestObservation(){
+		if (
+			!variables.settings.enableMetrics || !variables.settings.enableRequestSaturation || !variables.owner.getEnabled()
+		)
+			return {};
+		try {
+			return variables.requests.begin();
+		} catch ( any unavailable ) {
+			return {};
+		}
+	}
+	function finishRequestObservation( required struct token, boolean timedOut = false ){
+		try {
+			return variables.requests.finish( argumentCollection = arguments );
+		} catch ( any unavailable ) {
+			return false;
+		}
+	}
+	function requestSaturation(){
+		return variables.requests.snapshot();
+	}
+	function captureRequestSaturation(){
+		if (
+			!variables.settings.enableMetrics || !variables.settings.enableRequestSaturation || !variables.owner.getEnabled()
+		)
+			return {};
+		try {
+			return variables.requests.capture();
+		} catch ( any unavailable ) {
+			return {};
+		}
+	}
+	function captureRequestExecutor( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.owner.getEnabled() ) return false;
+		return variables.executors.capture( argumentCollection = arguments );
+	}
+	function requestExecutorDiagnostics( required string name ){
+		return variables.executors.diagnostics( arguments.name );
+	}
+	function captureQueueHealth( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.owner.getEnabled() ) return false;
+		return variables.queues.capture( argumentCollection = arguments );
+	}
+	function queueHealthDiagnostics( required string name ){
+		return variables.queues.diagnostics( arguments.name );
+	}
+	function captureQueueWorkerHealth( required string name, required function sample ){
+		if ( !variables.settings.enableMetrics || !variables.owner.getEnabled() ) return false;
+		return variables.workers.capture( argumentCollection = arguments );
+	}
+	function queueWorkerDiagnostics( required string name ){
+		return variables.workers.diagnostics( arguments.name );
+	}
+	function captureCBQWorkerHealth( required string name, required any pool ){
+		var workerPool = arguments.pool;
+		return captureQueueWorkerHealth( arguments.name, function(){
+			// Compatibility facade only. Provider-specific sampling belongs to the installed cbq adapter.
+			return variables.adapterResolver.resolve( "WorkerHealthAdapter@cbq" ).samplePool( workerPool );
+		} );
+	}
+
+	function withDependency(
+		required string name,
+		required function callback,
+		any classify = ""
+	){
+		if (
+			!variables.settings.enableMetrics || !variables.owner.getEnabled() || !variables.dependencies.isAllowed(
+				arguments.name
+			)
+		)
+			return arguments.callback();
+		var scope = {};
+		try {
+			scope = getScope();
+		} catch ( any unavailable ) {
+			return arguments.callback();
+		}
+		if ( scope.keyExists( "dependencyObservations" ) && scope.dependencyObservations.find( arguments.name ) )
+			return arguments.callback();
+		var classifier = arguments.classify;
+		if ( !isCustomFunction( classifier ) && ( !isSimpleValue( classifier ) || len( classifier ) ) ) {
+			var descriptor = classifier;
+			classifier     = function( result, failure ){
+				return variables.adapterResolver.call(
+					descriptor,
+					"classify",
+					{
+						"result"  : isNull( arguments.result ) ? javacast( "null", "" ) : arguments.result,
+						"failure" : isNull( arguments.failure ) ? javacast( "null", "" ) : arguments.failure
+					}
+				);
+			};
+		}
+		return new Dependency( this ).run( arguments.name, arguments.callback, classifier );
+	}
+
+	function withOperation(
+		required string name,
+		required function callback,
+		string provider = "",
+		any classify    = ""
+	){
+		if (
+			!variables.settings.operationNames.find( arguments.name ) || (
+				len( arguments.provider ) && !variables.settings.providerNames.find( arguments.provider )
+			)
+		) {
+			return arguments.callback();
+		}
+		return new Operation( this ).run( argumentCollection = arguments );
+	}
+	private function sendSignalReceipt(
+		required string type,
+		required struct payload,
+		required string category,
+		array attachments = [],
+		boolean wait      = false
+	){
 		var data = arguments.payload;
 		try {
 			var filter = arguments.type == "feedback" ? variables.settings.beforeSendFeedback : variables.settings.beforeSendSignal;
@@ -477,7 +917,7 @@ component {
 	){
 		var queryCallback = arguments.callback;
 		return withSpan(
-			scrubSQL( arguments.sql ),
+			scrubSQL( arguments.sql, arguments.databaseSystem ),
 			function( span ){
 				var previous         = getScope();
 				var next             = structCopy( previous );
@@ -722,14 +1162,10 @@ component {
 		);
 	}
 	function captureRuntimeGauges(){
-		var memory = createObject( "java", "java.lang.management.ManagementFactory" )
-			.getMemoryMXBean()
-			.getHeapMemoryUsage();
-		gauge( "jvm.heap.used", memory.getUsed(), {}, "byte" );
-		gauge(
-			"jvm.threads",
-			createObject( "java", "java.lang.management.ManagementFactory" ).getThreadMXBean().getThreadCount()
-		);
+		if ( !variables.settings.enableMetrics ) {
+			return {};
+		}
+		return new RuntimeMetrics( this ).capture();
 	}
 	function getBrowserConfig(){
 		var browser = variables.settings.browser;
@@ -850,7 +1286,17 @@ component {
 			return "";
 		}
 	}
-	function scrubSQL( required string sql ){
+	function scrubSQL( required string sql, string databaseSystem = "" ){
+		var dialect = len( arguments.databaseSystem ) ? arguments.databaseSystem : (
+			variables.settings.databaseSystem ?: "other"
+		);
+		if ( dialect == "postgresql" ) {
+			// Escape strings, dollar quoting and other unsupported forms fail closed.
+			if ( find( "$", arguments.sql ) || find( "`", arguments.sql ) || find( chr( 92 ), arguments.sql ) ) {
+				return "[Filtered SQL]";
+			}
+			return scrubPostgreSQL( arguments.sql );
+		}
 		// Unsupported quoting is discarded rather than risking exporting literals.
 		if ( find( "$", arguments.sql ) || find( "`", arguments.sql ) || find( "\\", arguments.sql ) ) {
 			return uCase( listFirst( trim( arguments.sql ), " " ) ) & " [Filtered]";
@@ -873,6 +1319,103 @@ component {
 		}
 		return left( reReplace( scrubbed, "\s+", " ", "all" ), 1024 );
 	}
+	/** Scan quotes and comments together so comment markers inside values/identifiers are inert. */
+	private function scrubPostgreSQL( required string sql ){
+		var parts      = [];
+		var cursor     = 1;
+		var plainStart = 1;
+		var size       = len( arguments.sql );
+		while ( cursor <= size ) {
+			var character = mid( arguments.sql, cursor, 1 );
+			var pair      = mid( arguments.sql, cursor, 2 );
+			if ( character != "'" && character != """" && pair != "--" && pair != "/*" ) {
+				cursor++;
+				continue;
+			}
+			if ( cursor > plainStart ) {
+				parts.append( scrubPostgreSQLNumbers( mid( arguments.sql, plainStart, cursor - plainStart ) ) );
+			}
+			var tokenStart = cursor;
+			if ( character == "'" || character == """" ) {
+				var quote  = character;
+				var closed = false;
+				cursor++;
+				while ( cursor <= size ) {
+					if ( mid( arguments.sql, cursor, 1 ) == quote ) {
+						if ( mid( arguments.sql, cursor + 1, 1 ) == quote ) {
+							cursor += 2;
+							continue;
+						}
+						cursor++;
+						closed = true;
+						break;
+					}
+					cursor++;
+				}
+				if ( !closed ) {
+					return "[Filtered SQL]";
+				}
+				parts.append( quote == """" ? mid( arguments.sql, tokenStart, cursor - tokenStart ) : "?" );
+			} else if ( pair == "--" ) {
+				cursor += 2;
+				while ( cursor <= size && !find( mid( arguments.sql, cursor, 1 ), chr( 10 ) & chr( 13 ) ) ) {
+					cursor++;
+				}
+				parts.append( " " );
+			} else {
+				var depth = 1;
+				cursor += 2;
+				while ( cursor <= size && depth > 0 ) {
+					pair = mid( arguments.sql, cursor, 2 );
+					if ( pair == "/*" ) {
+						depth++;
+						cursor += 2;
+					} else if ( pair == "*/" ) {
+						depth--;
+						cursor += 2;
+					} else {
+						cursor++;
+					}
+				}
+				if ( depth > 0 ) {
+					return "[Filtered SQL]";
+				}
+				parts.append( " " );
+			}
+			plainStart = cursor;
+		}
+		if ( plainStart <= size ) {
+			parts.append(
+				scrubPostgreSQLNumbers(
+					mid(
+						arguments.sql,
+						plainStart,
+						size - plainStart + 1
+					)
+				)
+			);
+		}
+		var result = "";
+		for ( var part in parts ) {
+			var identifier = left( part, 1 ) == """";
+			var text       = identifier ? part : reReplace( part, "\s+", " ", "all" );
+			if ( right( result, 1 ) == " " && left( text, 1 ) == " " ) {
+				text = removeChars( text, 1, 1 );
+			}
+			if ( len( result ) + len( text ) > 1024 ) {
+				// Do not split identifiers: adapters may sanitize this description again.
+				if ( !identifier ) {
+					result &= left( text, 1024 - len( result ) );
+				}
+				break;
+			}
+			result &= text;
+		}
+		return trim( result );
+	}
+	private function scrubPostgreSQLNumbers( required string sql ){
+		return variables.postgreSQLNumberPattern.matcher( arguments.sql ).replaceAll( "?" );
+	}
 	function getTransport(){
 		return variables.transport;
 	}
@@ -881,6 +1424,12 @@ component {
 		return variables.transport.flush( arguments.timeoutMilliseconds );
 	}
 	function shutdown( numeric timeoutMilliseconds = 2000 ){
+		if ( !variables.closed.compareAndSet( false, true ) ) return true;
+		variables.collectors.shutdown();
+		try {
+			if ( !isNull( variables.queryAdapterShutdown ) ) variables.queryAdapterShutdown();
+		} catch ( any unavailable ) {
+		}
 		if ( !isNull( variables.nativeQueryListener ) ) {
 			createObject( "java", "ortus.boxlang.runtime.BoxRuntime" )
 				.getInstance()

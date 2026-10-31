@@ -1,6 +1,6 @@
 # Observability and feedback for CFML and BoxLang
 
-All new integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Version 3.0.0-alpha.1 is a preview requiring the accompanying qb/cbq hooks; it is not a published stable release.
+All integrations are opt-in. Existing error APIs, LogBox appender settings, standalone construction, and thread-safe WireBox initialization remain available. Optional qb/cbq integrations require versions with the documented hooks (see the [upstream audit](observability-upstream-audit.md) for the inspected dependency versions). The operational additions described below remain unpublished until released.
 
 ## Server setup
 
@@ -11,6 +11,7 @@ moduleSettings.sentry = {
     release: "my-release",
     tracesSampleRate: 1,
     enableRequestTracing: true,
+    // Try native engine hooks; never infer an installed query library.
     queryAdapter: "auto",
     databaseSystem: "postgresql",
     enableQueueTracing: true,
@@ -42,6 +43,26 @@ sentry.withTraceContext( headers, function( root ) {
 
 ## Queries
 
+Query tracing observes executions; it does not supply a query builder or choose how your application accesses the database. No query library is required. `queryAdapter` defaults to `"none"`.
+
+| Setting | What it enables |
+| --- | --- |
+| `"none"` | No automatic query instrumentation. Manual `withQuerySpan` remains available. |
+| `"auto"` / `"boxlang"` | Complete native BoxLang query hooks when available; otherwise automatic query tracing stays off. There is no query-library fallback. |
+| `"lucee"` | Select the native application listener configured below. This setting does not install the listener. |
+| `"QueryTelemetryAdapter@qb"` | Explicitly install the optional adapter shipped by a compatible qb release. qb owns its execution listeners and cleanup. |
+| Callback or WireBox mapping | Install your own execution hooks with `configure(context)`. Return `{mode:"custom",shutdown:callback}` for cleanup. |
+
+Custom setup receives `context.telemetry`, `context.applicationName` and `context.databaseSystem` (default `"other"`). It must install its integration; returning `"custom"` alone does not observe queries. Returning a built-in native mode selects that explicit integration instead. This setup hook is separate from dependency method advice and periodic database-pool health snapshots.
+
+```cfml
+// Explicitly select the optional execution adapter shipped by qb.
+// Requires an installed qb version containing QueryTelemetryAdapter.
+moduleSettings.sentry.queryAdapter = "QueryTelemetryAdapter@qb";
+```
+
+Sentry contains no qb event interceptor or built-in `"qb"` mode. Other query libraries can ship their own mapping or configure callback using the same lifecycle contract. The qb adapter creates a scrubbed span for each real execution, preserves result/exception behavior, suppresses duplicate manual/native spans, and removes only its owned listeners on shutdown after in-flight executions drain.
+
 On Lucee 6+, compose your existing application listener:
 
 ```cfml
@@ -49,14 +70,15 @@ this.query.listener = sentry.createLuceeQueryListener(
     listener = existingListener,
     databaseSystem = "postgresql"
 );
-// Set queryAdapter="lucee" so qb does not produce a second span.
+// Select this explicitly installed native listener.
+// moduleSettings.sentry.queryAdapter = "lucee";
 ```
 
 Native global listeners are officially scoped to Lucee 6+ ([Lucee documentation](https://docs.lucee.org/recipes/query-listener.html)); older engines are not automatically enabled. Existing before/after/error returns and transformations are preserved. Each thread has a nesting stack; use the manual wrapper for asynchronous query modes whose callbacks do not execute on that thread.
 
-BoxLang auto selects application-scoped preQueryExecute/postQueryExecute/onQueryExecuteError only when the runtime exposes ON_QUERY_EXECUTE_ERROR. Earlier runtimes fall back to qb. The upstream hook includes PendingQuery identity, context, elapsed milliseconds, and the unchanged exception. Cached execution events include cached/dbtype and correlate with the same pending identity. The currently tested server runtime lacks that error event: successful native direct queries were exercised separately, but automatic configuration deliberately uses qb there. Connection acquisition/build failures occurring before native PRE remain a manual-wrapper boundary.
+BoxLang auto selects application-scoped preQueryExecute/postQueryExecute/onQueryExecuteError only when the runtime exposes ON_QUERY_EXECUTE_ERROR. Earlier runtimes leave automatic query tracing off. The upstream hook includes PendingQuery identity, context, elapsed milliseconds, and the unchanged exception. Cached execution events include cached/dbtype and correlate with the same pending identity. The currently tested server runtime lacks that error event: successful native direct queries were exercised separately, but automatic configuration deliberately stays disabled there. Connection acquisition/build failures occurring before native PRE remain a manual-wrapper boundary.
 
-qb's new onQBExecuteException closes the original preQBExecute span and preserves the database exception even if an observer fails. Pretend queries are skipped. Adobe CF and runtimes without complete native coverage use these hooks plus:
+When explicitly selected, qb's onQBExecuteException closes the original preQBExecute span and preserves the database exception even if an observer fails. Pretend queries are skipped. Adobe CF and runtimes without complete native coverage can use a custom integration or this library-independent manual wrapper:
 
 ```cfml
 result = sentry.withQuerySpan( sql, function( span ) {
@@ -65,6 +87,8 @@ result = sentry.withQuerySpan( sql, function( span ) {
 ```
 
 An explicit query wrapper suppresses native/qb span creation for its execution. SQL literals/comments/numbers are scrubbed; unsupported quoting fails closed. Cached queries and query-of-queries have distinct attributes/operations and are not reported as database round trips. Generic SQL scrubbing is conservative; use signal filters if your schema/identifiers themselves contain sensitive information.
+
+With `databaseSystem: "postgresql"`, double-quoted table and column identifiers stay visible, including qualified names and escaped identifier quotes. String and numeric values remain redacted, and comments are removed. For example, `SELECT "users"."id" FROM "users" WHERE "email" = 'private@example.test'` is recorded as `SELECT "users"."id" FROM "users" WHERE "email" = ?`. Incomplete quotes/comments and unsupported dollar/escape quoting fail closed. Other and unknown database systems retain conservative double-quote redaction. Custom adapters may call `scrubSQL(sql, databaseSystem)`; omitting the second argument uses the configured database system. Query span attributes and manual/native listener dialect arguments override that default.
 
 ## Queues, caches, external calls and scheduled work
 
@@ -126,3 +150,9 @@ Browser profiling needs a separate browser support/Document-Policy and overhead 
 See verification.md for commands, exact versions, provider proof and deferred checks.
 
 Lucee 6 global listener cache classification requires the query result metadata to include cached (for queryExecute, an existing result option). Missing cache metadata is marked db.cache_status=unknown. Query-of-queries bypassed global listeners in 6.2.8.20; instrument those explicitly with withQuerySpan. Existing error handlers retain their handling behavior; absent one, the adapter throws the original query exception. See the [Lucee listener contract](https://docs.lucee.org/recipes/query-listener.html).
+
+## Operational setup
+
+See [operational-observability.md](operational-observability.md) for delivery freshness, bounded request timings, workflow outcomes, optional queue/pool adapters, JVM CPU/GC samples and alert/uptime/cron recipes. See [observability-upstream-audit.md](observability-upstream-audit.md) for the CommuniArts ownership audit and release/adoption boundaries.
+
+The [local verification report](operational-verification.md) separates focused runtime/test evidence from release, consumer and production checks.

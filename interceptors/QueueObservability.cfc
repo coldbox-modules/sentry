@@ -166,7 +166,8 @@ component {
 					"exited"     : false,
 					"created"    : telemetry.timestamp(),
 					"enqueuedAt" : metadata.enqueuedAt ?: telemetry.timestamp(),
-					"started"    : 0
+					"started"    : 0,
+					"attributes" : metricAttributes( job )
 				}
 			);
 		} catch ( any ignored ) {
@@ -196,7 +197,7 @@ component {
 				variables.sentry.distribution(
 					"queue.wait.duration",
 					waitTime,
-					{},
+					attempt.attributes,
 					"millisecond"
 				);
 			}
@@ -233,24 +234,36 @@ component {
 			if ( isNull( attempt ) ) {
 				return;
 			}
-			var status = arguments.interceptData.status;
+			var status     = arguments.interceptData.status;
+			var finishedAt = variables.sentry.getObservability().timestamp();
 			attempt.span.setAttribute( "messaging.message.released", status == "released" );
 			if ( attempt.span.finish( status == "released" ? "ok" : status ) ) {
+				// Close the root before best-effort metrics; a failed observer cannot strand it.
+				attempt.root.finish( status == "released" ? "ok" : status );
 				var telemetry = variables.sentry.getObservability();
 				var previous  = telemetry.getScope();
 				try {
 					telemetry.setScope( { "span" : attempt.root } );
-					variables.sentry.counter( "queue.attempts", 1, { "outcome" : status } );
-					variables.sentry.distribution(
-						"queue.processing.duration",
-						attempt.started > 0 ? ( telemetry.timestamp() - attempt.started ) * 1000 : 0,
-						{ "outcome" : status },
-						"millisecond"
-					);
+					var labels          = structCopy( attempt.attributes );
+					labels[ "outcome" ] = listFind(
+						"ok,released,internal_error,deadline_exceeded,cancelled",
+						status
+					) ? status : "unknown";
+					variables.sentry.counter( "queue.attempts", 1, labels );
+					if ( attempt.started > 0 ) {
+						variables.sentry.distribution(
+							"queue.processing.duration",
+							max( 0, ( finishedAt - attempt.started ) * 1000 ),
+							labels,
+							"millisecond"
+						);
+					}
 				} finally {
 					telemetry.setScope( previous );
+					if ( attempt.exited ) {
+						variables.attempts.remove( arguments.interceptData.executionId );
+					}
 				}
-				attempt.root.finish( status == "released" ? "ok" : status );
 			}
 			if ( attempt.exited ) {
 				variables.attempts.remove( arguments.interceptData.executionId );
@@ -261,6 +274,30 @@ component {
 	}
 	function getPendingAttemptCount(){
 		return variables.attempts.size();
+	}
+	function onCBQJobComplete( event, interceptData ){
+		terminalMetric( arguments.interceptData.job, "completed" );
+	}
+	function onCBQJobFailed( event, interceptData ){
+		terminalMetric( arguments.interceptData.job, "failed" );
+	}
+	private function terminalMetric( required any job, required string outcome ){
+		try {
+			if ( !variables.sentry.getSettings().enableQueueJobMetrics ) {
+				return;
+			}
+			var labels          = metricAttributes( arguments.job );
+			labels[ "outcome" ] = arguments.outcome;
+			variables.sentry.counter( "queue.jobs", 1, labels );
+		} catch ( any unavailable ) {
+			variables.observationFailures.incrementAndGet();
+		}
+	}
+	private function metricAttributes( required any job ){
+		var destination = arguments.job.getQueue() ?: "default";
+		return variables.sentry.getSettings().queueMetricDestinations.find( destination ) ? {
+			"messaging.destination.name" : destination
+		} : {};
 	}
 	function getObservationFailureCount(){
 		return variables.observationFailures.get();

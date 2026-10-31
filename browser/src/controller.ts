@@ -1,5 +1,5 @@
 import { feedbackAvailable, sendFeedback } from './feedback';
-import { feedbackPageUrl, isPrivateFeedbackPage } from './feedbackPrivacy';
+import { canRecordFeedbackPage, feedbackPageUrl, isPrivateFeedbackPage } from './feedbackPrivacy';
 import type { FeedbackScreenshot } from './feedbackScreenshot';
 export type CaptureState = 'pending' | 'ready' | 'removed' | 'unavailable' | 'private';
 export interface FeedbackState { message: string; busy: boolean; capturing: boolean; screenshot?: FeedbackScreenshot; captureState: CaptureState; error: '' | 'messageRequired' | 'unavailable' | 'sendFailed'; success: boolean; }
@@ -18,14 +18,15 @@ export function createFeedbackController(options: { component?: () => string; ch
     opened = true; const current = ++generation; state.error = ''; state.success = false; state.capturing = true;
     state.captureState = isPrivateFeedbackPage(window.location) ? 'private' : 'pending';
     context = { pageUrl: feedbackPageUrl(window.location), component: options.component?.() ?? 'document' }; notify();
+    if (state.captureState === 'private') { state.capturing = false; notify(); return; }
     const capture = captureWithDeadline(import('./feedbackScreenshot').then(m => m.captureFeedbackScreenshot()), image => URL.revokeObjectURL(image.previewUrl));
-    const replay = captureWithDeadline(import('./feedbackReplay').then(m => m.freezeFeedbackReplay()));
+    const replay = canRecordFeedbackPage(window.location) ? captureWithDeadline(import('./feedbackReplay').then(m => m.freezeFeedbackReplay())) : Promise.resolve(undefined);
     const [image, replayId] = await Promise.all([capture, replay]);
     if (current !== generation) { if (image) URL.revokeObjectURL(image.previewUrl); return; }
     state.screenshot = image; context.replayId = replayId; state.capturing = false;
     if (state.captureState !== 'private') state.captureState = image ? 'ready' : 'unavailable'; notify();
   }
-  function close() { if (state.busy) return; cancel(); void import('./feedbackReplay').then(m => m.restartFeedbackReplay()); }
+  function close() { if (state.busy) return; cancel(); if (canRecordFeedbackPage(window.location)) void import('./feedbackReplay').then(m => m.restartFeedbackReplay()); }
   function cancel() { generation++; opened = false; removeScreenshot(); state.message = ''; state.capturing = false; notify(); }
   async function submit() {
     if (state.busy || state.capturing || options.eligible?.() === false) return;
