@@ -4,6 +4,9 @@
 
 This module connects your CFML application to send bug reports to Sentry (https://sentry.io)
 
+For observability-enabled consumers, see the [performance dashboard recipes](dashboards/README.md)
+for configurable offline queries, sample coverage and saved-dashboard verification.
+
 ## LICENSE
 
 Apache License, Version 2.0.
