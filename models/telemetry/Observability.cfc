@@ -60,6 +60,9 @@ component {
 		);
 		variables.delivery                = new DeliveryDiagnostics( variables.settings.maxPendingEnvelopes );
 		variables[ "scope" ]              = createObject( "java", "java.lang.ThreadLocal" ).init();
+		variables.scopeKey                = "_sentryExecution_" & replace( createUUID(), "-", "", "all" );
+		variables.clock                   = createObject( "java", "java.lang.System" );
+		variables.scopeResets             = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init( 0 );
 		variables[ "completionFailures" ] = createObject( "java", "java.util.concurrent.atomic.AtomicLong" ).init(
 			0
 		);
@@ -309,13 +312,9 @@ component {
 	function finishRequestTimings( required struct state, string status = "ok" ){
 		try {
 			if ( !arguments.state.keyExists( "timings" ) ) return;
-			for ( var token in arguments.state.handlerTokens )
-				arguments.state.timings.finish( token, arguments.status );
+			arguments.state.timings.close( arguments.status );
 			arguments.state.handlerTokens = [];
-			if ( arguments.state.keyExists( "renderToken" ) ) {
-				arguments.state.timings.finish( arguments.state.renderToken, arguments.status );
-				arguments.state.delete( "renderToken" );
-			}
+			arguments.state.delete( "renderToken" );
 		} catch ( any unavailable ) {
 		}
 	}
@@ -344,7 +343,10 @@ component {
 		return variables.settings.maxSpans;
 	}
 	function timestamp(){
-		return createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000;
+		return variables.clock.currentTimeMillis() / 1000;
+	}
+	function monotonicTime(){
+		return variables.clock.nanoTime();
 	}
 	function id(){
 		return lCase( replace( createUUID(), "-", "", "all" ) );
@@ -360,11 +362,19 @@ component {
 		}
 		return 200;
 	}
-	function endRequest( numeric statusCode = 0, boolean timedOut = false ){
+	function endRequest(
+		numeric statusCode = 0,
+		boolean timedOut   = false,
+		struct state
+	){
 		var current = getScope();
 		if ( !current.keyExists( "requestState" ) ) {
 			return;
 		}
+		// A late callback must never finish a newer request on the same worker.
+		if ( !isNull( arguments.state ) && arguments.state.id != ( current.requestState.id ?: "" ) ) return;
+		if ( current.requestState.keyExists( "done" ) && !current.requestState.done.compareAndSet( false, true ) )
+			return;
 		try {
 			finishRequestTimings( current.requestState, arguments.timedOut ? "deadline_exceeded" : "ok" );
 			if ( current.requestState.keyExists( "span" ) ) {
@@ -383,13 +393,13 @@ component {
 							"http.response.status_code" : code
 						}
 					);
+					span.finish();
 					distribution(
 						"http.server.duration",
-						max( 0, timestamp() - span.toPayload().start_timestamp ) * 1000,
+						span.getDurationMilliseconds(),
 						{ "route" : span.toPayload().description },
 						"millisecond"
 					);
-					span.finish();
 					flushSignals();
 				}
 			}
@@ -403,10 +413,36 @@ component {
 		}
 	}
 	function getScope(){
-		return variables.scope.get() ?: {};
+		var stored = variables.scope.get();
+		if ( isNull( stored ) ) return {};
+		if ( stored.owner != executionOwner() ) {
+			variables.scope.remove();
+			variables.scopeResets.incrementAndGet();
+			return {};
+		}
+		return stored.value;
+	}
+	/** Local diagnostic only: a completion boundary was missed, with no known end time. */
+	function getScopeResetCount(){
+		return variables.scopeResets.get();
 	}
 	function setScope( required struct scope ){
-		variables.scope.set( arguments.scope );
+		if ( arguments.scope.isEmpty() ) variables.scope.remove();
+		else variables.scope.set( { "owner" : executionOwner(), "value" : arguments.scope } );
+	}
+	/** Request scope outlives neither the HTTP request nor its worker assignment. */
+	function executionOwner(){
+		try {
+			if ( !structKeyExists( request, variables.scopeKey ) ) {
+				lock name="sentry-owner-#variables.scopeKey#" type="exclusive" timeout="2" {
+					if ( !structKeyExists( request, variables.scopeKey ) )
+						request[ variables.scopeKey ] = createUUID();
+				}
+			}
+			return request[ variables.scopeKey ];
+		} catch ( any noRequestContext ) {
+			return "background";
+		}
 	}
 	function clearScope(){
 		variables.scope.remove();
@@ -417,8 +453,10 @@ component {
 		struct headers  = {},
 		boolean trusted = false
 	){
-		var parent  = arguments.trusted ? parseHeaders( arguments.headers ) : {};
-		var sampled = variables.owner.getEnabled() && (
+		var started        = monotonicTime();
+		var startTimestamp = timestamp();
+		var parent         = arguments.trusted ? parseHeaders( arguments.headers ) : {};
+		var sampled        = variables.owner.getEnabled() && (
 			parent.keyExists( "sampled" ) ? parent.sampled : rand() < variables.settings.tracesSampleRate
 		);
 		var data = {
@@ -426,38 +464,46 @@ component {
 			"span_id"         : left( id(), 16 ),
 			"op"              : arguments.op,
 			"description"     : safeName( arguments.name ),
-			"start_timestamp" : timestamp(),
+			"start_timestamp" : startTimestamp,
 			"status"          : "ok",
 			"data"            : {}
 		};
 		if ( parent.keyExists( "parent_span_id" ) ) {
 			data[ "parent_span_id" ] = parent.parent_span_id;
 		}
-		return new Span( this, data, sampled ).setBaggage( parent.baggage ?: "" );
+		return new Span(
+			telemetry = this,
+			data      = data,
+			sampled   = sampled,
+			started   = started
+		).setBaggage( parent.baggage ?: "" );
 	}
 	function startSpan(
 		required string name,
 		string op         = "function",
 		struct attributes = {}
 	){
-		var description = listFind( "db.query,db.query.cache,db.query.qoq", arguments.op ) ? scrubSQL(
+		var started        = monotonicTime();
+		var startTimestamp = timestamp();
+		var description    = listFind( "db.query,db.query.cache,db.query.qoq", arguments.op ) ? scrubSQL(
 			arguments.name,
 			arguments.attributes[ "db.system" ] ?: variables.settings.databaseSystem ?: "other"
 		) : safeName( arguments.name );
 		var current = getScope();
 		if ( !current.keyExists( "span" ) || current.span.isFinished() ) {
 			return new Span(
-				this,
-				{
+				telemetry = this,
+				data      = {
 					"trace_id"        : id(),
 					"span_id"         : left( id(), 16 ),
 					"op"              : arguments.op,
 					"description"     : description,
-					"start_timestamp" : timestamp(),
+					"start_timestamp" : startTimestamp,
 					"data"            : {},
 					"status"          : "ok"
 				},
-				false
+				sampled = false,
+				started = started
 			);
 		}
 		var parent = current.span.getContext();
@@ -469,12 +515,13 @@ component {
 				"parent_span_id"  : parent.span_id,
 				"op"              : arguments.op,
 				"description"     : description,
-				"start_timestamp" : timestamp(),
+				"start_timestamp" : startTimestamp,
 				"status"          : "ok",
 				"data"            : sanitizeAttributes( arguments.attributes )
 			},
 			current.span.isSampled(),
-			current.span.getRoot()
+			current.span.getRoot(),
+			started
 		);
 	}
 	function withSpan(

@@ -5,7 +5,8 @@ component {
 		required any telemetry,
 		required struct data,
 		boolean sampled = false,
-		any root
+		any root,
+		numeric started
 	){
 		variables[ "baggage" ]   = "";
 		variables[ "telemetry" ] = arguments.telemetry;
@@ -16,6 +17,7 @@ component {
 		variables[ "done" ]      = createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false );
 		variables[ "children" ]  = createObject( "java", "java.util.concurrent.ConcurrentLinkedQueue" ).init();
 		variables[ "id" ]        = createUUID();
+		variables.started        = isNull( arguments.started ) ? variables.telemetry.monotonicTime() : arguments.started;
 		return this;
 	}
 	function getContext(){
@@ -73,6 +75,7 @@ component {
 				return false;
 			}
 			variables.data[ "start_timestamp" ] = arguments.timestamp;
+			variables.started                   = variables.telemetry.monotonicTime();
 		}
 		return true;
 	}
@@ -85,7 +88,8 @@ component {
 			if ( len( arguments.status ) ) {
 				variables.data[ "status" ] = arguments.status;
 			}
-			variables.data[ "timestamp" ] = variables.telemetry.timestamp();
+			variables.duration            = ( variables.telemetry.monotonicTime() - variables.started ) / 1000000;
+			variables.data[ "timestamp" ] = variables.data.start_timestamp + variables.duration / 1000;
 			if ( variables.sampled ) {
 				if ( variables.isRoot ) {
 					variables.telemetry.completeTransaction( this );
@@ -95,6 +99,9 @@ component {
 			}
 		}
 		return true;
+	}
+	function getDurationMilliseconds(){
+		return isFinished() ? variables.duration : ( variables.telemetry.monotonicTime() - variables.started ) / 1000000;
 	}
 	function toPayload(){
 		var payload       = duplicate( variables.data );

@@ -16,7 +16,11 @@ component {
 			}
 
 			if ( arguments.event.getPrivateValue( "_sentryRequest", {} ).keyExists( "previous" ) ) return;
-			var state = { "previous" : telemetry.getScope() };
+			var state = {
+				"previous" : telemetry.getScope(),
+				"id"       : createUUID(),
+				"done"     : createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false )
+			};
 			if ( settings.enableRequestTracing ) {
 				var headers = getHTTPRequestData( false ).headers;
 				var trusted = isCustomFunction( settings.trustIncomingTrace ) ? settings.trustIncomingTrace(
@@ -87,7 +91,7 @@ component {
 				} finally {
 					closeTimings( state, "ok" );
 					publishTimings( arguments.event, state );
-					variables.sentry.endRequest();
+					variables.sentry.endRequest( state = state );
 				}
 			}
 		} catch ( any ignored ) {

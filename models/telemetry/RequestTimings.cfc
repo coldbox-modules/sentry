@@ -18,6 +18,8 @@ component {
 		variables.metrics    = {};
 		variables.tokens     = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
 		variables.clock      = createObject( "java", "java.lang.System" );
+		variables.id         = createUUID();
+		variables.closed     = createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false );
 		return this;
 	}
 	private function registerName( required string name ){
@@ -36,7 +38,13 @@ component {
 		return arguments.name;
 	}
 	function begin( required string name ){
-		if ( variables.samples >= variables.maxSamples ) {
+		lock name="sentry-timings-#variables.id#" type="exclusive" timeout="2" throwOnTimeout="false" {
+			return beginToken( arguments.name );
+		}
+		return {};
+	}
+	private function beginToken( required string name ){
+		if ( variables.closed.get() || variables.samples >= variables.maxSamples ) {
 			return {};
 		}
 		var phaseName = registerName( arguments.name );
@@ -55,6 +63,11 @@ component {
 		return token;
 	}
 	function finish( required struct token, string status = "ok" ){
+		lock name="sentry-timings-#variables.id#" type="exclusive" timeout="2" throwOnTimeout="false" {
+			finishToken( arguments.token, arguments.status );
+		}
+	}
+	private function finishToken( required struct token, required string status ){
 		var state = {};
 		try {
 			if ( !arguments.token.keyExists( "id" ) || !isSimpleValue( arguments.token.id ) ) {
@@ -109,8 +122,17 @@ component {
 			finish( token, status );
 		}
 	}
+	/** Drain every owned handle, including manual phases, at the response boundary. */
+	function close( string status = "ok" ){
+		lock name="sentry-timings-#variables.id#" type="exclusive" timeout="2" throwOnTimeout="false" {
+			if ( !variables.closed.compareAndSet( false, true ) ) return;
+			for ( var id in variables.tokens.keySet().toArray() ) finishToken( { "id" : id }, arguments.status );
+		}
+	}
 	function snapshot(){
-		return duplicate( variables.metrics );
+		lock name="sentry-timings-#variables.id#" type="readonly" timeout="2" {
+			return duplicate( variables.metrics );
+		}
 	}
 	function toServerTiming(){
 		var headers = [];
