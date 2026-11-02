@@ -40,6 +40,56 @@ test("readiness and application recipes form an explicit, disjoint split", () =>
 	assert(!ready.conditions.includes("span.status:ok"));
 });
 
+test("optional asset split preserves investigation data without duration or status cutoffs", () => {
+	const assets = ["GET media/:id/", "GET attachments/:id/"];
+	const { widgets } = buildRecipes({
+		...config,
+		suspectAssetDescriptions: assets,
+	});
+	const app = widgets.find(
+		(w) => w.title === "Backend non-readiness latency",
+	);
+	const count = widgets.find(
+		(w) => w.title === "Backend non-readiness count",
+	);
+	const suspect = widgets.find(
+		(w) => w.title === "Suspect asset recorded latency",
+	);
+	const suspectCount = widgets.find(
+		(w) => w.title === "Suspect asset sample count",
+	);
+	const allRoutes = widgets.find(
+		(w) => w.title === "Backend routes and releases",
+	);
+	assert.equal(app.conditions, count.conditions);
+	assert.equal(suspect.conditions, suspectCount.conditions);
+	for (const asset of assets)
+		assert(
+			app.conditions.includes(
+				`!span.description:${JSON.stringify(asset)}`,
+			),
+		);
+	assert(
+		suspect.conditions.endsWith(
+			`span.description:[${assets.map(JSON.stringify).join(",")}]`,
+		),
+	);
+	assert(!allRoutes.conditions.includes("span.description"));
+	for (const widget of [app, suspect])
+		assert(!/span.duration:|span.status:/.test(widget.conditions));
+	for (const invalid of [
+		"route",
+		["GET *"],
+		[""],
+		[assets[0], assets[0]],
+		[config.readinessDescription],
+	]) {
+		assert.throws(() =>
+			buildRecipes({ ...config, suspectAssetDescriptions: invalid }),
+		);
+	}
+});
+
 test("each queue gauge has per-pool sample coverage without legacy labels or zero filling", () => {
 	const { widgets } = buildRecipes(config);
 	for (const name of ["queue.depth", "queue.oldest_age"]) {

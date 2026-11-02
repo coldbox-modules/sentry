@@ -24,10 +24,33 @@ export function buildRecipes(config) {
 			"phaseField must be verified in live data: span.description or app.phase",
 		);
 	}
+	const assets = config.suspectAssetDescriptions ?? [];
+	if (
+		!Array.isArray(assets) ||
+		assets.length > 32 ||
+		assets.some(
+			(value) =>
+				typeof value !== "string" ||
+				!value.trim() ||
+				value.length > 512 ||
+				/[\x00-\x1f*]/.test(value),
+		) ||
+		new Set(assets).size !== assets.length ||
+		assets.includes(config.readinessDescription)
+	) {
+		throw new Error(
+			"suspectAssetDescriptions must be unique exact descriptions, excluding readiness (maximum 32)",
+		);
+	}
 	const backend = `project:${config.backendProject} environment:${config.environment}`;
 	const frontend = `project:${config.frontendProject} environment:${config.environment}`;
 	const http = `${backend} span.op:http.server`;
 	const ready = `span.description:${quote(config.readinessDescription)}`;
+	const nonReadiness = `${http} !${ready}`;
+	const application = [
+		nonReadiness,
+		...assets.map((value) => `!span.description:${quote(value)}`),
+	].join(" ");
 	const queue = `${backend} has:queue.name`;
 	const widgets = [];
 	const add = (
@@ -51,14 +74,26 @@ export function buildRecipes(config) {
 	add(
 		"Backend non-readiness latency",
 		"spans",
-		`${http} !${ready}`,
+		application,
 		["p50(span.duration)", "p95(span.duration)"],
 		[],
-		"Recorded ms, auto-scaled. Pair with matching counts. Security probes, errors and suspect asset timings remain included; duration is not necessarily user wait time.",
+		assets.length
+			? "Recorded ms, auto-scaled. Excludes readiness and explicitly configured suspect asset routes, which remain in separate investigation charts. Pair with matching counts. No duration or status cutoff."
+			: "Recorded ms, auto-scaled. Pair with matching counts. Security probes, errors and suspect asset timings remain included; duration is not necessarily user wait time.",
 	);
-	add("Backend non-readiness count", "spans", `${http} !${ready}`, [
-		"count()",
-	]);
+	add("Backend non-readiness count", "spans", application, ["count()"]);
+	if (assets.length) {
+		const suspect = `${nonReadiness} span.description:[${assets.map(quote).join(",")}]`;
+		add(
+			"Suspect asset recorded latency",
+			"spans",
+			suspect,
+			["p50(span.duration)", "p95(span.duration)"],
+			[],
+			"Investigation only: recorded duration is not established user wait time. Exact consumer-selected routes; no duration or success filter. Pair with matching counts and retain the all-route/release table.",
+		);
+		add("Suspect asset sample count", "spans", suspect, ["count()"]);
+	}
 	add(
 		"Readiness availability observations",
 		"spans",

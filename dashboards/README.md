@@ -40,9 +40,17 @@ change no CFML runtime behavior.
 
 ## Query contracts
 
+Set optional `suspectAssetDescriptions` to an array of exact, live-verified HTTP
+descriptions when asset lifecycle timings flatten application latency. The default
+is empty. Configured routes are excluded from both application percentiles and
+their matching count, and retained in separate suspect-asset percentile/count
+recipes. The all-route/release table remains unfiltered. Use route classification,
+not a duration cutoff: genuine slow requests, uploads and failures must remain
+visible. Recheck the consumer list when parameterized route names change.
+
 | Signal          | Query                                                                              | Interpretation                                                                                                                                                                                                |
 | --------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP            | Backend `http.server`; exact readiness description split                           | Pair application percentiles with identical-filter counts. Retain readiness count/p95/status/release views. Non-readiness still includes security probes, failures and assets.                                |
+| HTTP            | Backend `http.server`; exact readiness description split                           | Pair application percentiles with identical-filter counts. Retain readiness count/p95/status/release views. Security probes and failures remain; configured suspect assets stay visible separately.           |
 | Routes/releases | Description and release with count/p95                                             | Use parameterized routes. Sparse rows limit tail estimates. Label suspect asset lifecycle timing explicitly; do not silently exclude slow spans.                                                              |
 | DB              | `db.query`; p95/count/cumulative duration; scrubbed shape and parent `transaction` | Parent grouping separates probe queries. Cumulative span time is workload, not request latency. Coverage may be incomplete. Never include SQL bindings or remove security/readiness checks to improve charts. |
 | Browser         | Frontend `pageload`/`navigation`                                                   | Preserve project distinctions and sample counts. Pageload duration is not FCP or proof of first-paint experience.                                                                                             |

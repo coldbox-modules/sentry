@@ -3,5 +3,6 @@
 	"frontendProject": "example-frontend",
 	"environment": "production",
 	"readinessDescription": "GET ready/",
-	"phaseField": "span.description"
+	"phaseField": "span.description",
+	"suspectAssetDescriptions": []
 }
