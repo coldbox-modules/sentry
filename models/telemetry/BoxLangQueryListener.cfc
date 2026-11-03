@@ -33,7 +33,7 @@ component {
 				return;
 			}
 			var span = variables.telemetry.startSpan(
-				variables.telemetry.scrubSQL( arguments.data.sql ),
+				arguments.data.sql,
 				( arguments.data.cached ?: false ) ? "db.query.cache" : (
 					( arguments.data.dbtype ?: "" ) == "query" ? "db.query.qoq" : "db.query"
 				),

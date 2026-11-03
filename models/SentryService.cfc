@@ -57,6 +57,9 @@ component accessors=true singleton threadSafe {
 	// Additional tags
 	property name="tags";
 
+	// Use the same unadjusted JVM clock as envelope and observability timestamps.
+	variables.timestampClock = createObject( "java", "java.lang.System" );
+
 
 
 	/**
@@ -197,6 +200,7 @@ component accessors=true singleton threadSafe {
 			variables.observability.shutdown();
 		}
 		variables.observability = new telemetry.Observability( this, variables.settings );
+		if ( !isNull( variables.wirebox ) ) variables.observability.setAdapterInjector( variables.wirebox );
 
 		// in a non ColdBox context, ensure functionLineNums exists
 		// so this service can still be used if functionLineNums
@@ -286,6 +290,66 @@ component accessors=true singleton threadSafe {
 	}
 	function captureRuntimeGauges(){
 		return variables.observability.captureRuntimeGauges( argumentCollection = arguments );
+	}
+	function deliveryDiagnostics(){
+		return variables.observability.deliveryDiagnostics();
+	}
+	function captureDatabasePool(){
+		return variables.observability.captureDatabasePool( argumentCollection = arguments );
+	}
+	function newRequestTimings(){
+		return variables.observability.newRequestTimings( argumentCollection = arguments );
+	}
+	function beginRequestObservation(){
+		return variables.observability.beginRequestObservation( argumentCollection = arguments );
+	}
+	function finishRequestObservation(){
+		return variables.observability.finishRequestObservation( argumentCollection = arguments );
+	}
+	function requestSaturation(){
+		return variables.observability.requestSaturation( argumentCollection = arguments );
+	}
+	function captureRequestSaturation(){
+		return variables.observability.captureRequestSaturation( argumentCollection = arguments );
+	}
+	function captureRequestExecutor(){
+		return variables.observability.captureRequestExecutor( argumentCollection = arguments );
+	}
+	function requestExecutorDiagnostics(){
+		return variables.observability.requestExecutorDiagnostics( argumentCollection = arguments );
+	}
+	function captureQueueHealth(){
+		return variables.observability.captureQueueHealth( argumentCollection = arguments );
+	}
+	function queueHealthDiagnostics(){
+		return variables.observability.queueHealthDiagnostics( argumentCollection = arguments );
+	}
+	function captureQueueWorkerHealth(){
+		return variables.observability.captureQueueWorkerHealth( argumentCollection = arguments );
+	}
+	function queueWorkerDiagnostics(){
+		return variables.observability.queueWorkerDiagnostics( argumentCollection = arguments );
+	}
+	function captureCBQWorkerHealth(){
+		return variables.observability.captureCBQWorkerHealth( argumentCollection = arguments );
+	}
+	function withDependency(){
+		return variables.observability.withDependency( argumentCollection = arguments );
+	}
+	function automaticCollectorDiagnostics(){
+		return variables.observability.automaticCollectorDiagnostics( argumentCollection = arguments );
+	}
+	function collectAutomaticMetrics(){
+		return variables.observability.collectAutomaticMetrics( argumentCollection = arguments );
+	}
+	function startAutomaticCollectors(){
+		return variables.observability.startAutomaticCollectors( argumentCollection = arguments );
+	}
+	function getRequestTimings(){
+		return variables.observability.getRequestTimings( argumentCollection = arguments );
+	}
+	function withOperation(){
+		return variables.observability.withOperation( argumentCollection = arguments );
 	}
 	function getInstrumentedCache( string name = "default" ){
 		return new telemetry.InstrumentedCache(
@@ -1209,10 +1273,14 @@ component accessors=true singleton threadSafe {
 
 		var traceContext = variables.observability.getTraceContext();
 		if ( !traceContext.isEmpty() ) {
-			if ( !arguments.captureStruct.keyExists( "contexts" ) ) {
-				arguments.captureStruct.contexts = {};
-			}
-			arguments.captureStruct.contexts.trace = traceContext;
+			// Case-insensitive structs can preserve an earlier dot-assigned uppercase key.
+			var captureContexts = arguments.captureStruct.keyExists( "contexts" ) ? arguments.captureStruct[
+				"contexts"
+			] : {};
+			arguments.captureStruct.delete( "contexts" );
+			captureContexts.delete( "trace" );
+			captureContexts[ "trace" ]            = traceContext;
+			arguments.captureStruct[ "contexts" ] = captureContexts;
 		}
 		// serialize data
 		jsonCapture = serializeJSON( arguments.captureStruct );
@@ -1350,8 +1418,10 @@ component accessors=true singleton threadSafe {
 	/**
 	 * Get matching UTC values from one truncated epoch second on every engine.
 	 */
-	private struct function getTimeVars( date time = now() ){
-		var unixSeconds = int( time.getTime() / 1000 );
+	private struct function getTimeVars( date time ){
+		// Lucee now() can apply a configured time-server offset to the JVM clock.
+		var millis      = isNull( arguments.time ) ? variables.timestampClock.currentTimeMillis() : arguments.time.getTime();
+		var unixSeconds = int( millis / 1000 );
 		var timeVars    = {
 			"unix" : toString( unixSeconds ),
 			"iso"  : createObject( "java", "java.time.Instant" )

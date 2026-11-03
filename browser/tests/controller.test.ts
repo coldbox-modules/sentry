@@ -12,3 +12,31 @@ it('discards stale screenshot results and revokes their object URLs after naviga
 it('allows text feedback after screenshot capture fails', async () => { mock.capture.mockRejectedValue(Error('renderer failed')); const controller = createFeedbackController(); await controller.open(); expect(controller.state.captureState).toBe('unavailable'); controller.setMessage('Text works'); mock.send.mockResolvedValue(undefined); await controller.submit(); expect(controller.state.success).toBe(true); });
 it('keeps the eight second deadline and discards a late result', async () => { vi.useFakeTimers(); let resolve!: (value: string) => void; const discard = vi.fn(); const result = captureWithDeadline(new Promise<string>(r => resolve = r), discard); await vi.advanceTimersByTimeAsync(8000); expect(await result).toBeUndefined(); resolve('late'); await Promise.resolve(); expect(discard).toHaveBeenCalledWith('late'); });
 it('does not load captures when ineligible', async () => { const controller = createFeedbackController({ eligible: () => false }); await controller.open(); expect(mock.capture).not.toHaveBeenCalled(); });
+it.each(['/login', '/email-sign-in', '/password-reset-requests/new'])('keeps private feedback text-only without starting capture or replay on %s', async (path) => {
+  configureCapturePolicy({ protectedPage: location => /login|email-sign-in|password-reset/.test(location.pathname) });
+  history.replaceState({}, '', path);
+  const controller = createFeedbackController();
+  await controller.open();
+  expect(controller.state.captureState).toBe('private');
+  expect(controller.state.capturing).toBe(false);
+  expect(mock.capture).not.toHaveBeenCalled();
+  expect(mock.freeze).not.toHaveBeenCalled();
+  controller.setMessage('Text feedback still works');
+  mock.send.mockResolvedValue(undefined);
+  await controller.submit();
+  expect(mock.send).toHaveBeenCalledWith(expect.objectContaining({ message: 'Text feedback still works', pageUrl: window.location.origin + '/[private-page]', screenshot: undefined }));
+  expect(mock.send.mock.calls[0][0]).not.toHaveProperty('replayId');
+  controller.close();
+  await Promise.resolve();
+  expect(mock.restart).not.toHaveBeenCalled();
+});
+it.each(['/?search=private', '/#private'])('does not load replay when URL metadata prevents recording on %s', async (path) => {
+  history.replaceState({}, '', path);
+  const controller = createFeedbackController();
+  await controller.open();
+  expect(mock.capture).toHaveBeenCalledOnce();
+  expect(mock.freeze).not.toHaveBeenCalled();
+  controller.close();
+  await Promise.resolve();
+  expect(mock.restart).not.toHaveBeenCalled();
+});

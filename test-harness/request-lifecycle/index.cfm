@@ -1,0 +1,1 @@
+<cfset application.bootstrap.processColdBoxRequest()>
